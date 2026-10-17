@@ -37,7 +37,7 @@ public enum BLEEvent: Sendable {
 /// Capacitor/WebView boundary independent of delegate lifetime details.
 #if os(iOS) && canImport(CoreBluetooth)
 @MainActor
-public final class BLETransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, @unchecked Sendable {
+public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDelegate, @preconcurrency CBPeripheralDelegate, @unchecked Sendable {
     public let restorationIdentifier: String
     public private(set) var state: LEDTransportState = .idle
     public private(set) var advertisements: [UUID: BLEAdvertisement] = [:]
