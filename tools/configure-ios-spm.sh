@@ -17,7 +17,7 @@ import PackageDescription
 
 let package = Package(
     name: "CapApp-SPM",
-    platforms: [.iOS(.v18)],
+    platforms: [.iOS(.v17)],
     products: [
         .library(name: "CapApp-SPM", targets: ["CapApp-SPM"])
     ],
