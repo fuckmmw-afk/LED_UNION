@@ -12,37 +12,49 @@ import sys
 
 package = Path(sys.argv[1])
 scene = Path(sys.argv[2])
-text = package.read_text()
-dependency = '.package(path: "../../../Sources/LEDNativeBLEPlugin"),'
-if dependency not in text:
-    text = text.replace(
-        '.package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.3")',
-        '.package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.3"),\n        ' + dependency
-    )
-product = '.product(name: "LEDNativeBLEPlugin", package: "LEDNativeBLEPlugin")'
-if product not in text:
-    text = text.replace(
-        '.product(name: "Cordova", package: "capacitor-swift-pm")',
-        '.product(name: "Cordova", package: "capacitor-swift-pm"),\n                ' + product
-    )
-text = text.replace('platforms: [.iOS(.v15)]', 'platforms: [.iOS(.v17)]')
-text = text.replace('platforms: [.iOS(.v18)]', 'platforms: [.iOS(.v17)]')
+text = """// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "CapApp-SPM",
+    platforms: [.iOS(.v18)],
+    products: [
+        .library(name: "CapApp-SPM", targets: ["CapApp-SPM"])
+    ],
+    dependencies: [
+        .package(path: "../../../")
+    ],
+    targets: [
+        .target(
+            name: "CapApp-SPM",
+            dependencies: [
+                .product(name: "LEDUnionApp", package: "LED_UNION"),
+                .product(name: "LEDUnionIntents", package: "LED_UNION")
+            ]
+        )
+    ]
+)
+"""
 package.write_text(text)
 
-scene_text = scene.read_text()
-if 'import LEDNativeBLEPlugin' not in scene_text:
-    scene_text = scene_text.replace('import Capacitor\n', 'import Capacitor\nimport LEDNativeBLEPlugin\n')
-if 'final class LEDBridgeViewController' not in scene_text:
-    marker = 'class SceneDelegate: UIResponder, UIWindowSceneDelegate {'
-    bridge_class = '''final class LEDBridgeViewController: CAPBridgeViewController {
-    override func capacitorDidLoad() {
-        bridge?.registerPluginInstance(LEDNativeBLEPlugin())
+scene_text = """import SwiftUI
+import UIKit
+import LEDUnionApp
+
+@MainActor
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+    private let model = NativeAppModel()
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        guard let windowScene = scene as? UIWindowScene else { return }
+        let window = UIWindow(windowScene: windowScene)
+        window.rootViewController = UIHostingController(rootView: NativeRootView(model: model))
+        self.window = window
+        window.makeKeyAndVisible()
     }
 }
-
-'''
-    scene_text = scene_text.replace(marker, bridge_class + marker)
-scene_text = scene_text.replace('let bridge = CAPBridgeViewController()\n        bridge.bridge?.registerPluginInstance(LEDNativeBLEPlugin())\n        window?.rootViewController = bridge', 'window?.rootViewController = LEDBridgeViewController()')
+"""
 scene.write_text(scene_text)
 PY
 
@@ -59,5 +71,9 @@ if project.exists():
     text = text.replace('PRODUCT_BUNDLE_IDENTIFIER = com.company.app;', 'PRODUCT_BUNDLE_IDENTIFIER = fun.fuckmmw.ledunion;')
     text = text.replace('IPHONEOS_DEPLOYMENT_TARGET = 15.0;', 'IPHONEOS_DEPLOYMENT_TARGET = 18.0;')
     text = text.replace('MARKETING_VERSION = 1.0;', 'MARKETING_VERSION = 1.0.0;')
+    # Capacitor may re-add its web resources during cap sync. The native launch
+    # scene must not package or load the Svelte/WebView bundle.
+    web_markers = ('config.xml', 'capacitor.config.json', 'public in Resources', 'path = public;')
+    text = '\n'.join(line for line in text.splitlines() if not any(marker in line for marker in web_markers)) + '\n'
     project.write_text(text)
 PY

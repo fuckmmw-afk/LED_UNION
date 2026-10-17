@@ -16,3 +16,6 @@
 - GitHub fork creation and protected VPS deployment require credentials for the
   destination accounts; the local repository and CI artifacts are ready for that
   handoff.
+
+- Replaced the iOS WebView launch path with a native SwiftUI target (`LEDUnionApp`) covering device scan/connect, RGB controls, brightness, power, effects and diagnostics.
+- Fixed GATT writes to retain every discovered writable characteristic and wait for the driver-declared UUID before reporting a connection. Queue write failures now reach the UI.

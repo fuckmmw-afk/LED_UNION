@@ -13,8 +13,10 @@ differential fixtures in `tools/difftest/`.
   pacing, coalescing, cancellation, persistence and diagnostics.
 - `Sources/LEDUnionIntents` owns App Intents and Shortcuts. Intents call the core;
   they never call JavaScript or the WebView.
-- Svelte/TypeScript owns screens and presentation state. On iOS it calls the
-  `LEDNativeBLE` Capacitor plugin. Web Bluetooth remains a desktop/PWA fallback.
+- `Sources/LEDUnionApp` owns the native SwiftUI iOS screens and presentation state.
+  It calls the core directly; the iOS launch path does not load a WebView.
+  Svelte/TypeScript and Web Bluetooth remain desktop/PWA fallbacks. The
+  `LEDNativeBLE` Capacitor bridge is compatibility code, not the iOS UI path.
 - All shared models are `Codable`/`Sendable` and independent of SwiftUI and Svelte.
 
 ## Protocol rules

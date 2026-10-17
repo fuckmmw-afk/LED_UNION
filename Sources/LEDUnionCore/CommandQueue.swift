@@ -5,8 +5,16 @@ public struct QueueSnapshot: Sendable, Codable {
     public let sent: Int
     public let failed: Int
     public let lastCommandAt: Date?
-    public init(pending: Int, sent: Int, failed: Int, lastCommandAt: Date?) {
-        self.pending = pending; self.sent = sent; self.failed = failed; self.lastCommandAt = lastCommandAt
+    public let lastError: String?
+    public init(pending: Int, sent: Int, failed: Int, lastCommandAt: Date?, lastError: String? = nil) {
+        self.pending = pending; self.sent = sent; self.failed = failed; self.lastCommandAt = lastCommandAt; self.lastError = lastError
+    }
+}
+
+public enum CommandQueueError: Error, LocalizedError, Sendable {
+    case writeFailed(String)
+    public var errorDescription: String? {
+        switch self { case .writeFailed(let detail): return "BLE write failed: \(detail)" }
     }
 }
 
@@ -24,6 +32,7 @@ public actor CommandQueue {
     private var sent = 0
     private var failed = 0
     private var lastCommandAt: Date?
+    private var lastError: String?
 
     public init(minimumGap: Duration, sink: @escaping Sink) {
         self.minimumGap = minimumGap; self.sink = sink
@@ -48,13 +57,14 @@ public actor CommandQueue {
     }
 
     public func snapshot() -> QueueSnapshot {
-        QueueSnapshot(pending: pending.count, sent: sent, failed: failed, lastCommandAt: lastCommandAt)
+        QueueSnapshot(pending: pending.count, sent: sent, failed: failed, lastCommandAt: lastCommandAt, lastError: lastError)
     }
 
     private func run() async {
         while !pending.isEmpty {
             let item = pending.removeFirst()
-            do { try await sink(item.data); sent += 1 } catch { failed += 1 }
+            do { try await sink(item.data); sent += 1 }
+            catch { failed += 1; lastError = error.localizedDescription }
             lastCommandAt = .now
             if !pending.isEmpty { try? await Task.sleep(for: minimumGap) }
         }

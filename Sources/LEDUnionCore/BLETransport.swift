@@ -44,7 +44,8 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
 
     private var central: CBCentralManager!
     private var peripherals: [UUID: CBPeripheral] = [:]
-    private var characteristics: [UUID: CBCharacteristic] = [:]
+    private var characteristics: [UUID: [String: CBCharacteristic]] = [:]
+    private var expectedWriteCharacteristic: [UUID: String] = [:]
     private var connectionWaiters: [UUID: [CheckedContinuation<Void, Error>]] = [:]
     private var streamContinuation: AsyncStream<BLEEvent>.Continuation?
     private var services: [CBUUID]
@@ -96,14 +97,25 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
         central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
     }
 
-    public func connect(id: UUID) async throws {
+    public func connect(id: UUID, expectedWriteCharacteristicUUID: String? = nil) async throws {
         guard let peripheral = peripherals[id] ?? central.retrievePeripherals(withIdentifiers: [id]).first else { throw BLETransportError.deviceNotFound }
         peripherals[id] = peripheral
-        if peripheral.state == .connected { return }
+        if let expectedWriteCharacteristicUUID {
+            expectedWriteCharacteristic[id] = expectedWriteCharacteristicUUID.lowercased()
+        }
+        let expected = expectedWriteCharacteristic[id]
+        if peripheral.state == .connected {
+            if let expected, characteristics[id]?[expected] != nil { return }
+            if expected == nil { return }
+        }
         state = .connecting; emit(.state(.connecting))
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             connectionWaiters[id, default: []].append(continuation)
-            central.connect(peripheral, options: nil)
+            if peripheral.state == .connected {
+                resolveCharacteristics(for: peripheral)
+            } else {
+                central.connect(peripheral, options: nil)
+            }
         }
     }
 
@@ -114,9 +126,13 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
 
     public func write(id: UUID, data: Data, characteristicUUID: String, withoutResponse: Bool) throws {
         guard let peripheral = peripherals[id], peripheral.state == .connected else { throw BLETransportError.disconnected }
-        guard let characteristic = characteristics[id] else { throw BLETransportError.characteristicNotFound }
-        guard characteristic.uuid.uuidString.lowercased() == characteristicUUID.lowercased() else { throw BLETransportError.characteristicNotFound }
-        peripheral.writeValue(data, for: characteristic, type: withoutResponse ? .withoutResponse : .withResponse)
+        guard let characteristic = characteristics[id]?[characteristicUUID.lowercased()] else {
+            throw BLETransportError.characteristicNotFound
+        }
+        let type: CBCharacteristicWriteType = withoutResponse && characteristic.properties.contains(.writeWithoutResponse)
+            ? .withoutResponse
+            : .withResponse
+        peripheral.writeValue(data, for: characteristic, type: type)
     }
 
     private func emit(_ event: BLEEvent) { streamContinuation?.yield(event) }
@@ -172,14 +188,23 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
         // discovery has completed. Keep connect() suspended until then, with a
         // bounded fallback for peripherals that expose no discoverable metadata.
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(750))
+            try? await Task.sleep(for: .seconds(5))
             guard let self, self.connectionWaiters[peripheral.identifier] != nil else { return }
-            if self.characteristics[peripheral.identifier] != nil { self.finishConnection(peripheral.identifier) }
-            else { self.finishConnection(peripheral.identifier, error: BLETransportError.characteristicNotFound) }
+            let expected = self.expectedWriteCharacteristic[peripheral.identifier]
+            if let expected {
+                if self.characteristics[peripheral.identifier]?[expected] != nil {
+                    self.finishConnection(peripheral.identifier)
+                } else {
+                    self.finishConnection(peripheral.identifier, error: BLETransportError.characteristicNotFound)
+                }
+            } else {
+                self.finishConnection(peripheral.identifier)
+            }
         }
     }
 
     public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        expectedWriteCharacteristic.removeValue(forKey: peripheral.identifier)
         let waiters = connectionWaiters.removeValue(forKey: peripheral.identifier) ?? []
         waiters.forEach { $0.resume(throwing: error ?? BLETransportError.disconnected) }
         emit(.disconnected(peripheral.identifier, error?.localizedDescription))
@@ -187,6 +212,7 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
 
     public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         characteristics.removeValue(forKey: peripheral.identifier)
+        expectedWriteCharacteristic.removeValue(forKey: peripheral.identifier)
         finishConnection(peripheral.identifier, error: error ?? BLETransportError.disconnected)
         emit(.disconnected(peripheral.identifier, error?.localizedDescription))
     }
@@ -202,10 +228,20 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
 
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         guard error == nil else { return }
+        let discovered = (service.characteristics ?? []).map { characteristic in
+            "\(characteristic.uuid.uuidString) [\(characteristic.properties)]"
+        }
+        emit(.diagnostic(.init(deviceID: peripheral.identifier, kind: "gatt", detail: "\(service.uuid.uuidString): \(discovered.joined(separator: ", "))")))
         for characteristic in service.characteristics ?? [] {
             if characteristic.properties.contains(.write) || characteristic.properties.contains(.writeWithoutResponse) {
-                characteristics[peripheral.identifier] = characteristic
-                finishConnection(peripheral.identifier)
+                var values = characteristics[peripheral.identifier] ?? [:]
+                values[characteristic.uuid.uuidString.lowercased()] = characteristic
+                characteristics[peripheral.identifier] = values
+                if let expected = expectedWriteCharacteristic[peripheral.identifier] {
+                    if values[expected] != nil { finishConnection(peripheral.identifier) }
+                } else {
+                    finishConnection(peripheral.identifier)
+                }
             }
             if characteristic.properties.contains(.notify) || characteristic.properties.contains(.indicate) {
                 peripheral.setNotifyValue(true, for: characteristic)
@@ -230,7 +266,7 @@ public final class BLETransport: @unchecked Sendable {
     public func events() -> AsyncStream<BLEEvent> { AsyncStream { $0.finish() } }
     public func startScan() { state = .failed }
     public func stopScan() { state = .idle }
-    public func connect(id: UUID) async throws { throw BLETransportError.unavailable }
+    public func connect(id: UUID, expectedWriteCharacteristicUUID: String? = nil) async throws { throw BLETransportError.unavailable }
     public func disconnect(id: UUID) {}
     public func write(id: UUID, data: Data, characteristicUUID: String, withoutResponse: Bool) throws { throw BLETransportError.unavailable }
 }

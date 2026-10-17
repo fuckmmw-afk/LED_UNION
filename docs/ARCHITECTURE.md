@@ -1,23 +1,25 @@
 # Architecture
 
-The app is a Capacitor shell around the existing Svelte UI. Native protocol and
-Bluetooth work lives in the `LEDUnionCore` Swift package. `LEDNativeBLE` exposes
-typed operations and events to the WebView; it does not expose a Web Bluetooth
-object or let the UI pick GATT characteristics.
+The iOS target is a native SwiftUI application. `LEDUnionApp` owns the root
+scene and screens; it calls `DeviceManager` and never loads a WebView. The
+Svelte/TypeScript app remains the desktop/PWA fallback and is not part of the
+iOS launch path.
 
 ```text
-Svelte components -> typed LEDNativeBLE plugin -> DeviceManager
-                                                   -> CommandQueue per device
-                                                   -> ProtocolDriver -> BLETransport
-                                                   -> LEDStore (atomic Codable JSON)
-App Intents --------------------------------------^              |
-                                                             scenes/groups/looks
+SwiftUI screens -> NativeAppModel -> DeviceManager
+                                      -> CommandQueue per device
+                                      -> ProtocolDriver -> BLETransport
+                                      -> LEDStore (atomic Codable JSON)
+App Intents -------------------------^              |
+                                                   scenes/groups/looks
 ```
 
 `BLETransport` is main-actor isolated because CoreBluetooth delegates are
-callback based. The queue is an actor and is the only writer for a connection.
-RGB and brightness updates use coalescing keys; scene uploads and handshakes are
-ordered commands. `LEDStore` is the shared source for UI and App Intents.
+callback based. It discovers all writable characteristics and selects the
+protocol-declared UUID (FFF3 for MELK, FFE1 for FFE0 families, FFF1 for
+BLEDIM) before releasing `connect()`. The queue is the only writer for a
+connection and reports write failures to the native UI. RGB and brightness
+updates use coalescing keys; scene uploads and handshakes remain ordered.
 
-The PWA keeps its existing Web Bluetooth implementation for desktop/Android. The
-native path is selected by Capacitor, so iOS never relies on Web Bluetooth.
+The Capacitor bridge is retained only as a desktop/PWA compatibility target and
+is not linked into the native iOS launch scene.

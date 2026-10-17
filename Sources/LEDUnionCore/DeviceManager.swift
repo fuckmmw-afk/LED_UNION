@@ -41,9 +41,12 @@ public final class DeviceManager {
                 }
             }
         }
-        try await transport.connect(id: id)
+        try await transport.connect(id: id, expectedWriteCharacteristicUUID: driver.writeCharacteristicUUID)
         if let queue = queues[id] {
             for frame in driver.onConnect(now: .now) { await queue.enqueue(frame) }
+            await queue.waitUntilIdle()
+            let result = await queue.snapshot()
+            if result.failed > 0 { throw CommandQueueError.writeFailed(result.lastError ?? "unknown error") }
         }
         try await store.update { state in
             if let index = state.devices.firstIndex(where: { $0.id == id }) {
@@ -78,7 +81,11 @@ public final class DeviceManager {
         case .speed(let percent): frame = driver.speed(percent)
         case .effect(let effect): frame = driver.effect(effect)
         }
+        let before = await queue.snapshot().failed
         await queue.enqueue(frame, coalescingKey: coalescingKey)
+        await queue.waitUntilIdle()
+        let result = await queue.snapshot()
+        if result.failed > before { throw CommandQueueError.writeFailed(result.lastError ?? "unknown error") }
         try await store.update { state in
             guard let index = state.devices.firstIndex(where: { $0.id == id }) else { return }
             switch command {
@@ -101,7 +108,11 @@ public final class DeviceManager {
             try await connect(id: id, advertisedName: saved.advertisedName)
         }
         guard let queue = queues[id] else { throw BLETransportError.disconnected }
+        let before = await queue.snapshot().failed
         await queue.enqueue(frame, coalescingKey: coalescingKey)
+        await queue.waitUntilIdle()
+        let result = await queue.snapshot()
+        if result.failed > before { throw CommandQueueError.writeFailed(result.lastError ?? "unknown error") }
         await diagnostics.record(.init(deviceID: id, kind: "raw-command", detail: frame.map { String(format: "%02x", $0) }.joined(separator: " ")))
     }
 
