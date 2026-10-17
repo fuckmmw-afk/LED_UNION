@@ -1,3 +1,4 @@
+#if os(iOS)
 import AppIntents
 import Foundation
 import LEDUnionCore
@@ -198,3 +199,4 @@ public struct LEDAppShortcuts: AppShortcutsProvider {
         AppShortcut(intent: ApplyLEDSceneIntent(), phrases: ["Apply a scene in \(.applicationName)"], shortTitle: "Apply scene", systemImageName: "sparkles")
     }
 }
+#endif
