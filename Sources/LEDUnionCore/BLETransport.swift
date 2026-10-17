@@ -37,7 +37,7 @@ public enum BLEEvent: Sendable {
 /// Capacitor/WebView boundary independent of delegate lifetime details.
 #if os(iOS) && canImport(CoreBluetooth)
 @MainActor
-public final class BLETransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+public final class BLETransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate, @unchecked Sendable {
     public let restorationIdentifier: String
     public private(set) var state: LEDTransportState = .idle
     public private(set) var advertisements: [UUID: BLEAdvertisement] = [:]
@@ -189,7 +189,7 @@ public final class BLETransport: NSObject, CBCentralManagerDelegate, CBPeriphera
 /// Host-test fallback. iOS builds always take the CoreBluetooth implementation
 /// above; this keeps pure frame/queue/store tests runnable on a non-Apple host.
 @MainActor
-public final class BLETransport {
+public final class BLETransport: @unchecked Sendable {
     public let restorationIdentifier: String
     public private(set) var state: LEDTransportState = .idle
     public private(set) var advertisements: [UUID: BLEAdvertisement] = [:]
