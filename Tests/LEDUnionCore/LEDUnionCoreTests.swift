@@ -12,6 +12,13 @@ func melkRGBFrame() {
     #expect(Array(driver.rgb(RGBColor(red: 255, green: 255, blue: 255))) == [0x7e, 0x07, 0x05, 0x03, 0xff, 0xff, 0xff, 0x10, 0xef])
 }
 
+@Test("CoreBluetooth short and expanded characteristic UUIDs compare equally")
+func bluetoothUUIDNormalization() {
+    #expect(canonicalBluetoothUUID("FFF3") == "fff3")
+    #expect(canonicalBluetoothUUID("0000FFF3-0000-1000-8000-00805F9B34FB") == "fff3")
+    #expect(canonicalBluetoothUUID("6E400002-B5A3-F393-E0A9-E50E24DCCA9E") == "6e400002-b5a3-f393-e0a9-e50e24dcca9e")
+}
+
 @Test("Driver registry recognises LED advertisements and ignores unrelated BLE names")
 func driverRegistryAdvertisementMatching() {
     #expect(DriverRegistry.supports(advertisedName: "MELK-OF21 9D"))

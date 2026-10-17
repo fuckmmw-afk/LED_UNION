@@ -32,6 +32,19 @@ public enum BLEEvent: Sendable {
     case diagnostic(LEDDiagnosticEvent)
 }
 
+/// CoreBluetooth may report a Bluetooth SIG 16-bit UUID as `FFF3`, while a
+/// driver stores the equivalent expanded UUID. Keep both representations
+/// comparable without changing the protocol declarations.
+func canonicalBluetoothUUID(_ value: String) -> String {
+    let lowercased = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let baseSuffix = "-0000-1000-8000-00805f9b34fb"
+    if lowercased.count == 4 { return lowercased }
+    if lowercased.hasPrefix("0000"), lowercased.hasSuffix(baseSuffix), lowercased.count == 36 {
+        return String(lowercased.dropFirst(4).dropLast(baseSuffix.count))
+    }
+    return lowercased
+}
+
 /// CoreBluetooth is deliberately isolated to the main actor. The rest of the
 /// application only sees Sendable values and async methods, which keeps the
 /// Capacitor/WebView boundary independent of delegate lifetime details.
@@ -101,7 +114,7 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
         guard let peripheral = peripherals[id] ?? central.retrievePeripherals(withIdentifiers: [id]).first else { throw BLETransportError.deviceNotFound }
         peripherals[id] = peripheral
         if let expectedWriteCharacteristicUUID {
-            expectedWriteCharacteristic[id] = expectedWriteCharacteristicUUID.lowercased()
+            expectedWriteCharacteristic[id] = canonicalBluetoothUUID(expectedWriteCharacteristicUUID)
         }
         let expected = expectedWriteCharacteristic[id]
         if peripheral.state == .connected {
@@ -126,7 +139,7 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
 
     public func write(id: UUID, data: Data, characteristicUUID: String, withoutResponse: Bool) throws {
         guard let peripheral = peripherals[id], peripheral.state == .connected else { throw BLETransportError.disconnected }
-        guard let characteristic = characteristics[id]?[characteristicUUID.lowercased()] else {
+        guard let characteristic = characteristics[id]?[canonicalBluetoothUUID(characteristicUUID)] else {
             throw BLETransportError.characteristicNotFound
         }
         let type: CBCharacteristicWriteType = withoutResponse && characteristic.properties.contains(.writeWithoutResponse)
@@ -195,6 +208,8 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
                 if self.characteristics[peripheral.identifier]?[expected] != nil {
                     self.finishConnection(peripheral.identifier)
                 } else {
+                    self.state = .failed
+                    self.emit(.state(.failed))
                     self.finishConnection(peripheral.identifier, error: BLETransportError.characteristicNotFound)
                 }
             } else {
@@ -205,6 +220,8 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
 
     public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         expectedWriteCharacteristic.removeValue(forKey: peripheral.identifier)
+        state = .failed
+        emit(.state(.failed))
         let waiters = connectionWaiters.removeValue(forKey: peripheral.identifier) ?? []
         waiters.forEach { $0.resume(throwing: error ?? BLETransportError.disconnected) }
         emit(.disconnected(peripheral.identifier, error?.localizedDescription))
@@ -213,6 +230,8 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
     public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         characteristics.removeValue(forKey: peripheral.identifier)
         expectedWriteCharacteristic.removeValue(forKey: peripheral.identifier)
+        state = .disconnected
+        emit(.state(.disconnected))
         finishConnection(peripheral.identifier, error: error ?? BLETransportError.disconnected)
         emit(.disconnected(peripheral.identifier, error?.localizedDescription))
     }
@@ -235,7 +254,7 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
         for characteristic in service.characteristics ?? [] {
             if characteristic.properties.contains(.write) || characteristic.properties.contains(.writeWithoutResponse) {
                 var values = characteristics[peripheral.identifier] ?? [:]
-                values[characteristic.uuid.uuidString.lowercased()] = characteristic
+                values[canonicalBluetoothUUID(characteristic.uuid.uuidString)] = characteristic
                 characteristics[peripheral.identifier] = values
                 if let expected = expectedWriteCharacteristic[peripheral.identifier] {
                     if values[expected] != nil { finishConnection(peripheral.identifier) }
