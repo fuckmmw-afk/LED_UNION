@@ -25,7 +25,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run check
-      - run: npm run build
+      - run: CAPACITOR_BUILD=1 npm run build
       - name: Create Capacitor iOS project
         run: if [ ! -d ios/App/App.xcodeproj ]; then npx cap add ios; fi
       - run: npx cap sync ios

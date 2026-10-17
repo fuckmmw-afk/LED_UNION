@@ -2,6 +2,12 @@ import UIKit
 import Capacitor
 import LEDNativeBLEPlugin
 
+final class LEDBridgeViewController: CAPBridgeViewController {
+    override func capacitorDidLoad() {
+        bridge?.registerPluginInstance(LEDNativeBLEPlugin())
+    }
+}
+
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
@@ -9,9 +15,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        let bridge = CAPBridgeViewController()
-        bridge.bridge?.registerPluginInstance(LEDNativeBLEPlugin())
-        window?.rootViewController = bridge
+        window?.rootViewController = LEDBridgeViewController()
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)

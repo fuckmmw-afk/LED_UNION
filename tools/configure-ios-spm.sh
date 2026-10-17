@@ -32,9 +32,17 @@ package.write_text(text)
 scene_text = scene.read_text()
 if 'import LEDNativeBLEPlugin' not in scene_text:
     scene_text = scene_text.replace('import Capacitor\n', 'import Capacitor\nimport LEDNativeBLEPlugin\n')
-old = 'window?.rootViewController = CAPBridgeViewController()'
-new = 'let bridge = CAPBridgeViewController()\n        bridge.bridge?.registerPluginInstance(LEDNativeBLEPlugin())\n        window?.rootViewController = bridge'
-scene_text = scene_text.replace(old, new)
+if 'final class LEDBridgeViewController' not in scene_text:
+    marker = 'class SceneDelegate: UIResponder, UIWindowSceneDelegate {'
+    bridge_class = '''final class LEDBridgeViewController: CAPBridgeViewController {
+    override func capacitorDidLoad() {
+        bridge?.registerPluginInstance(LEDNativeBLEPlugin())
+    }
+}
+
+'''
+    scene_text = scene_text.replace(marker, bridge_class + marker)
+scene_text = scene_text.replace('let bridge = CAPBridgeViewController()\n        bridge.bridge?.registerPluginInstance(LEDNativeBLEPlugin())\n        window?.rootViewController = bridge', 'window?.rootViewController = LEDBridgeViewController()')
 scene.write_text(scene_text)
 PY
 

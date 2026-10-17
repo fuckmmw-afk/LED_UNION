@@ -13,7 +13,7 @@
     "difftest": "python3 tools/difftest/extract_java_frames.py $DIFFTEST_TARGETS > /tmp/java_frames.json && node tools/difftest/emit_ts_frames.ts > /tmp/ts_frames.json && python3 tools/difftest/compare.py /tmp/java_frames.json /tmp/ts_frames.json",
     "cap:add": "if [ ! -d ios/App/App.xcodeproj ]; then cap add ios; fi",
     "cap:sync": "cap sync ios",
-    "build:ios": "npm run build && npx cap sync ios"
+    "build:ios": "CAPACITOR_BUILD=1 npm run build && npx cap sync ios"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.3",

@@ -6,7 +6,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 // URL has to carry that prefix. Dev stays at the root: the adb-tunnel workflow points a
 // phone at http://localhost:5173, and a prefix there would only get in the way.
 export default defineConfig(({ command }) => ({
-  base: command === 'build' ? '/LED_UNION/' : '/',
+  // GitHub Pages needs the project prefix; Capacitor serves the bundled public
+  // directory from capacitor://localhost/ and therefore needs relative URLs.
+  base: process.env.CAPACITOR_BUILD === '1'
+    ? './'
+    : command === 'build' ? '/LED_UNION/' : '/',
   // Reachable over the tailnet for on-device testing; ts.net terminates TLS, which
   // is what makes Web Bluetooth available at all.
   server: {
