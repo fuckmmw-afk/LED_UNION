@@ -1,0 +1,102 @@
+name: iOS unsigned IPA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-unsigned-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run check
+      - run: npm run build
+      - name: Create Capacitor iOS project
+        run: if [ ! -d ios/App/App.xcodeproj ]; then npx cap add ios; fi
+      - run: npx cap sync ios
+      - run: bash tools/configure-ios-spm.sh
+      - name: Swift package tests
+        run: swift test --package-path .
+      - name: Build unsigned arm64 application
+        run: >-
+          xcodebuild -project ios/App/App.xcodeproj -scheme App
+          -sdk iphoneos -configuration Release -destination 'generic/platform=iOS'
+          -derivedDataPath build/DerivedData ARCHS=arm64 ONLY_ACTIVE_ARCH=NO
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+      - name: Package and validate IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="build/DerivedData/Build/Products/Release-iphoneos/App.app"
+          test -d "$app"
+          mkdir -p build/Payload
+          cp -R "$app" build/Payload/
+          /usr/bin/plutil -p "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app/Info.plist" | grep -Fx 'fun.fuckmmw.ledunion'
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Info.plist" | grep -Fx '1.0.0'
+          /usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$app/Info.plist" | grep -Fx '18.0'
+          file "$app/App" | grep -E 'arm64|Mach-O'
+          (cd build && zip -qry led-control.ipa Payload)
+          shasum -a 256 build/led-control.ipa | awk '{print $1 "  latest.ipa"}' | tee build/led-control.ipa.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: led-control-unsigned-${{ github.sha }}
+          path: |
+            build/led-control.ipa
+            build/led-control.ipa.sha256
+
+  deploy:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: led-ipa-production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: led-control-unsigned-${{ github.sha }}
+          path: build
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+      - name: Trust deployment host key
+        env:
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_KNOWN_HOSTS"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Publish atomically
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: /var/www/ipa/led-control
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" && test -n "$VPS_USER"
+          ssh -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" "install -d '$VPS_PATH/versions'"
+          scp -o StrictHostKeyChecking=yes build/led-control.ipa "$VPS_USER@$VPS_HOST:$VPS_PATH/.latest.ipa.tmp"
+          scp -o StrictHostKeyChecking=yes build/led-control.ipa.sha256 "$VPS_USER@$VPS_HOST:$VPS_PATH/.latest.ipa.sha256.tmp"
+          ssh -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" "set -eu; if test -f '$VPS_PATH/latest.ipa'; then cp '$VPS_PATH/latest.ipa' '$VPS_PATH/versions/led-control-${GITHUB_SHA}.ipa'; fi; mv '$VPS_PATH/.latest.ipa.tmp' '$VPS_PATH/latest.ipa'; mv '$VPS_PATH/.latest.ipa.sha256.tmp' '$VPS_PATH/latest.ipa.sha256'; cd '$VPS_PATH'; sha256sum -c latest.ipa.sha256; nginx -t; systemctl reload nginx"
+      - name: Verify public download and checksum
+        run: |
+          set -euo pipefail
+          curl --fail --location --head https://fuckmmw.space/downloads/led-control/latest.ipa
+          curl --fail --location --output /tmp/led-control.ipa https://fuckmmw.space/downloads/led-control/latest.ipa
+          test "$(cut -d' ' -f1 build/led-control.ipa.sha256)" = "$(sha256sum /tmp/led-control.ipa | cut -d' ' -f1)"

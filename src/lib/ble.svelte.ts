@@ -4,6 +4,7 @@ import { epKey, parseEp } from './endpoint.ts'
 export { epKey, parseEp }
 import { allServices, driverFor, drivers, type Driver } from './protocol/index.ts'
 import { forgetDevice, rememberDevice, store } from './store.svelte.ts'
+import { LEDNativeBLE, isNativeBLE, type NativeBLEDevice } from './native-ble.ts'
 
 /** What to show a human. Never pass this to a driver. */
 export const displayName = (c: { name: string; label?: string }) => c.label || c.name
@@ -37,9 +38,35 @@ export const selection = $state<{ ids: string[] }>({ ids: [] })
 
 const live = new Map<string, Live>()
 const connectedAt = new Map<string, number>()
+let nativeListener: { remove: () => Promise<void> } | undefined
 
 export const supported = () =>
-  typeof navigator !== 'undefined' && 'bluetooth' in navigator
+  isNativeBLE() || (typeof navigator !== 'undefined' && 'bluetooth' in navigator)
+
+const hexFrame = (frame: Uint8Array) =>
+  [...frame].map((value) => value.toString(16).padStart(2, '0')).join(' ')
+
+function trackNative(device: NativeBLEDevice) {
+  const driver = driverFor(device.name) ?? drivers[0]
+  const saved = store.devices.find((d) => d.id === device.id)
+  conns[device.id] ??= { id: device.id, name: device.name, driver, state: 'offline' }
+  Object.assign(conns[device.id], { name: device.name, label: saved?.label })
+  rememberDevice({ id: device.id, name: device.name, label: saved?.label, driverId: driver.id })
+}
+
+async function restoreNativeEvents() {
+  if (nativeListener) return
+  nativeListener = await LEDNativeBLE.addListener('bleEvent', (event) => {
+    if (!event.deviceId) return
+    const conn = conns[event.deviceId]
+    if (!conn) return
+    if (event.type === 'connected') conn.state = 'online'
+    if (event.type === 'disconnected' || event.type === 'error') {
+      conn.state = event.type === 'error' ? 'error' : 'offline'
+      conn.error = event.message
+    }
+  })
+}
 
 function track(device: BluetoothDevice, driver: Driver) {
   const name = device.name ?? '(sem nome)'
@@ -72,6 +99,15 @@ function track(device: BluetoothDevice, driver: Driver) {
  * device is re-paired on demand.
  */
 export async function restore(): Promise<void> {
+  if (isNativeBLE()) {
+    await restoreNativeEvents()
+    for (const d of store.devices) {
+      const driver = driverFor(d.name)
+      if (driver) conns[d.id] ??= { id: d.id, name: d.name, label: d.label, driver, state: 'offline' }
+    }
+    await Promise.allSettled(Object.keys(conns).map((id) => connect(id).catch(() => {})))
+    return
+  }
   if (!supported()) return
   for (const d of store.devices) {
     const driver = driverFor(d.name)
@@ -100,6 +136,15 @@ export async function restore(): Promise<void> {
 
 /** Opens the browser's device chooser. One device per call, by design. */
 export async function addDevice(): Promise<Conn | undefined> {
+  if (isNativeBLE()) {
+    await restoreNativeEvents()
+    const result = await LEDNativeBLE.scan({ timeoutMs: 5000 })
+    const device = result.devices[0]
+    if (!device) return undefined
+    trackNative(device)
+    await connect(device.id)
+    return conns[device.id]
+  }
   const device = await navigator.bluetooth.requestDevice({
     filters: allServices.map((s) => ({ services: [s] })),
     optionalServices: allServices,
@@ -190,9 +235,22 @@ async function resolveDriver(
 }
 
 export async function connect(id: string): Promise<void> {
-  const l = live.get(id)
   const c = conns[id]
-  if (!l || !c) throw new Error('Aparelho não pareado nesta sessão — use Adicionar')
+  if (!c) throw new Error('Aparelho não pareado nesta sessão — use Adicionar')
+  if (isNativeBLE()) {
+    if (c.state === 'online') return
+    c.state = 'connecting'; c.error = undefined
+    try {
+      await LEDNativeBLE.connect({ deviceId: id, name: c.name })
+      c.state = 'online'
+      rememberDevice({ id, name: c.name, label: c.label, driverId: c.driver.id })
+      return
+    } catch (e) {
+      c.state = 'error'; c.error = e instanceof Error ? e.message : String(e); throw e
+    }
+  }
+  const l = live.get(id)
+  if (!l) throw new Error('Апарат не спарен в этой сессии — используйте Добавить')
   if (c.state === 'online' && l.char) return
 
   c.state = 'connecting'
@@ -235,6 +293,11 @@ export function forget(id: string) {
 }
 
 export function disconnect(id: string) {
+  if (isNativeBLE()) {
+    void LEDNativeBLE.disconnect({ deviceId: id }).catch(() => {})
+    const c = conns[id]; if (c) c.state = 'offline'
+    return
+  }
   const l = live.get(id)
   if (l?.device.gatt?.connected) l.device.gatt.disconnect()
   const c = conns[id]
@@ -320,11 +383,16 @@ export async function applyTo(
       const { deviceId, ch } = parseEp(key)
       const c = conns[deviceId]
       const l = live.get(deviceId)
-      if (!c || !l) return
+      if (!c) return
       if (c.state !== 'online') await connect(deviceId)
       const o = outputAt(deviceId, ch)
       const frame = build(c.driver, c.name, o.ch, o.variant)
       if (!frame) return
+      if (isNativeBLE()) {
+        await LEDNativeBLE.sendRaw({ deviceId, hex: hexFrame(frame), coalescingKey: coalesceKey ? `${coalesceKey}:${ch ?? ''}` : undefined })
+        return
+      }
+      if (!l) return
       const op = () => writeRaw(l, frame, c.driver)
       // Coalescing is per output, or two outputs would cancel each other out.
       return coalesceKey
@@ -359,11 +427,16 @@ export async function sendFrames(
   const { deviceId, ch } = parseEp(key)
   const c = conns[deviceId]
   const l = live.get(deviceId)
-  if (!c || !l) throw new Error('Aparelho não pareado nesta sessão')
+  if (!c) throw new Error('Aparelho não pareado nesta sessão')
   if (c.state !== 'online') await connect(deviceId)
 
   const o = outputAt(deviceId, ch)
   for (const frame of build(c.driver, c.name, o.ch, o.variant)) {
+    if (isNativeBLE()) {
+      await LEDNativeBLE.sendRaw({ deviceId, hex: hexFrame(frame) })
+      continue
+    }
+    if (!l) throw new Error('Aparelho não pareado nesta sessão')
     await l.queue.push(() => writeRaw(l, frame, c.driver))
   }
 }
@@ -389,6 +462,8 @@ function propsOf(ch: BluetoothRemoteGATTCharacteristic): string[] {
  * service we can reach need no such declaration.
  */
 export async function inspect(id: string): Promise<ServiceInfo[]> {
+  if (isNativeBLE()) return (await LEDNativeBLE.diagnostics({ deviceId: id })).services
+    .map((service) => ({ uuid: service.uuid, chars: service.characteristics.map((uuid) => ({ uuid, props: [] })) }))
   const l = live.get(id)
   if (!l) throw new Error('Aparelho não pareado nesta sessão')
   const server = await connectGatt(l.device)
@@ -428,6 +503,10 @@ export async function sendRaw(
   frame: Uint8Array,
   charUuid?: string,
 ): Promise<void> {
+  if (isNativeBLE()) {
+    await LEDNativeBLE.sendRaw({ deviceId: id, hex: hexFrame(frame) })
+    return
+  }
   const l = live.get(id)
   const c = conns[id]
   if (!l || !c) throw new Error('Aparelho não pareado nesta sessão')

@@ -9,6 +9,11 @@ family, control one device at a time, and none of them are maintained. Here you 
 **one device, several, all of them, or a named group** and apply a colour, brightness,
 effect or scene in one go.
 
+The iOS build is a Capacitor shell around this UI. iOS commands use the native
+`LEDUnionCore` CoreBluetooth transport and the typed `LEDNativeBLE` bridge; the
+Web Bluetooth code below remains the desktop/Android PWA fallback. The native app
+uses bundle identifier `fun.fuckmmw.ledunion` and iOS 18.0 as its minimum target.
+
 ## Status
 
 | family | service / characteristic | status |
@@ -64,6 +69,11 @@ HTTPS from any domain.
 
 iOS does not support Web Bluetooth.
 
+On iOS install the unsigned IPA produced by the `iOS unsigned IPA` workflow through
+your signing tool (for example ESign/SideStore). The verified delivery endpoint is
+`https://fuckmmw.space/downloads/led-control/latest.ipa`; see
+[`docs/BUILD-IPA.md`](docs/BUILD-IPA.md) and [`docs/DELIVERY.md`](docs/DELIVERY.md).
+
 ## Commands
 
 ```bash
@@ -86,6 +96,10 @@ docs/protocol-pt-br/   the same specs, in Portuguese
 tools/gen-effects.py   effect table generator
 tools/difftest/        checks our builders against the original apps
 ```
+
+Native Swift code lives in `Sources/LEDUnionCore` and `Sources/LEDUnionIntents`.
+The generated Capacitor Xcode shell is kept in `ios/`; CI regenerates it when
+needed and links the local Swift packages with `tools/configure-ios-spm.sh`.
 
 Adding a family is one file in `src/lib/protocol/` implementing `Driver`, plus one line
 in the registry. The builders are pure functions, so each gets a test comparing its

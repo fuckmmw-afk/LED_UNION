@@ -32,4 +32,5 @@ export const locales = Object.keys(dicts)
 export const localeName: Record<string, string> = {
   en: 'English',
   'pt-BR': 'Português',
+  ru: 'Русский',
 }

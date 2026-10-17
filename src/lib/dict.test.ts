@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { en, ptBR, dicts, resolveLocale, translate, DEFAULT_LOCALE } from './dict.ts'
+import { en, ptBR, ru, dicts, resolveLocale, translate, DEFAULT_LOCALE } from './dict.ts'
 
 test('every English key has a Portuguese translation', () => {
   const missing = Object.keys(en).filter((k) => !(k in ptBR))
@@ -15,6 +15,7 @@ test('browser tags map onto the locales we actually ship', () => {
   assert.equal(resolveLocale('pt'), 'pt-BR')
   assert.equal(resolveLocale('pt-PT'), 'pt-BR')
   assert.equal(resolveLocale('en-GB'), 'en')
+  assert.equal(resolveLocale('ru-RU'), 'ru')
   assert.equal(resolveLocale('de'), DEFAULT_LOCALE)
   assert.equal(resolveLocale(undefined), DEFAULT_LOCALE)
 })
@@ -35,5 +36,6 @@ test('placeholders are filled, and an unknown one is left visible', () => {
 })
 
 test('both dictionaries are reachable by name', () => {
-  assert.deepEqual(Object.keys(dicts).sort(), ['en', 'pt-BR'])
+  assert.deepEqual(Object.keys(dicts).sort(), ['en', 'pt-BR', 'ru'])
+  assert.equal(ru['nav.devices'], 'Устройства')
 })
