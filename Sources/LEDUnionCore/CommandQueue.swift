@@ -13,7 +13,7 @@ public struct QueueSnapshot: Sendable, Codable {
 /// One serial command stream per physical controller. RGB and brightness updates may
 /// coalesce while scene uploads remain ordered and lossless.
 public actor CommandQueue {
-    public typealias Sink = @Sendable (Data) async throws -> Void
+    public typealias Sink = @MainActor @Sendable (Data) async throws -> Void
     private struct Item: Sendable { let data: Data; let key: String? }
 
     private let minimumGap: Duration

@@ -30,14 +30,13 @@ public final class DeviceManager {
         let driver = DriverRegistry.driver(for: advertisedName)
         drivers[id] = driver
         if queues[id] == nil {
-            queues[id] = CommandQueue(minimumGap: driver.minimumGap) { [weak transport] data in
+            queues[id] = CommandQueue(minimumGap: driver.minimumGap) { @MainActor [weak transport] data in
                 let chunkSize = driver.chunkSize ?? data.count
                 for offset in stride(from: 0, to: data.count, by: chunkSize) {
                     let end = min(offset + chunkSize, data.count)
                     let chunk = Data(data[offset..<end])
-                    try await MainActor.run {
-                        try transport?.write(id: id, data: chunk, characteristicUUID: driver.writeCharacteristicUUID, withoutResponse: driver.writeWithoutResponse)
-                    }
+                    guard let transport else { throw BLETransportError.disconnected }
+                    try transport.write(id: id, data: chunk, characteristicUUID: driver.writeCharacteristicUUID, withoutResponse: driver.writeWithoutResponse)
                     if end < data.count { try? await Task.sleep(for: driver.minimumGap) }
                 }
             }
