@@ -46,7 +46,7 @@ public final class AudioReactiveEngine {
                 let rms = min(1, sqrt(sum / Float(count)) * Float(sensitivity) * 8)
                 let bassLevel = min(1, bass / Float(max(1, count / 4)) * Float(sensitivity) * 2)
                 let beat = rms > 0.55 ? 1.0 : 0.0
-                Task { @MainActor in self.onLevel?(Double(rms), Double(bassLevel), beat) }
+                Task { @MainActor in self?.onLevel?(Double(rms), Double(bassLevel), beat) }
             }
             tapInstalled = true
         }
