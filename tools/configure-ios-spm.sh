@@ -25,7 +25,8 @@ if product not in text:
         '.product(name: "Cordova", package: "capacitor-swift-pm")',
         '.product(name: "Cordova", package: "capacitor-swift-pm"),\n                ' + product
     )
-text = text.replace('platforms: [.iOS(.v15)]', 'platforms: [.iOS(.v18)]')
+text = text.replace('platforms: [.iOS(.v15)]', 'platforms: [.iOS(.v17)]')
+text = text.replace('platforms: [.iOS(.v18)]', 'platforms: [.iOS(.v17)]')
 package.write_text(text)
 
 scene_text = scene.read_text()

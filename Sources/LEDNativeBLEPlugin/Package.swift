@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "LEDNativeBLEPlugin",
-    platforms: [.iOS(.v18)],
+    platforms: [.iOS(.v17)],
     products: [.library(name: "LEDNativeBLEPlugin", targets: ["LEDNativeBLEPlugin"])],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.3"),
