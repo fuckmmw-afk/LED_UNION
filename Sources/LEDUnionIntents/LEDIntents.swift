@@ -5,8 +5,10 @@ import LEDUnionCore
 
 @MainActor
 public enum LEDAppRuntime {
-    public static let store = LEDStore(fileURL: URL.applicationSupportDirectory.appendingPathComponent("LEDUnion/led-union.json"))
-    public static let manager = DeviceManager(store: store)
+    public static var store: LEDStore {
+        LEDStore(fileURL: URL.applicationSupportDirectory.appendingPathComponent("LEDUnion/led-union.json"))
+    }
+    public static var manager: DeviceManager { DeviceManager(store: store) }
 
     public static func load() async {
         try? await store.load()
