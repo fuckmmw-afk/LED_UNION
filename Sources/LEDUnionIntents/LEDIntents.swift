@@ -5,9 +5,7 @@ import LEDUnionCore
 
 @MainActor
 public enum LEDAppRuntime {
-    public static let store: LEDStore = {
-        (try? LEDStore.applicationSupport()) ?? LEDStore(fileURL: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("led-union.json"))
-    }()
+    public static let store = LEDStore(fileURL: URL.applicationSupportDirectory.appendingPathComponent("LEDUnion/led-union.json"))
     public static let manager = DeviceManager(store: store)
 
     public static func load() async {
@@ -71,11 +69,13 @@ public struct EffectEntity: AppEntity, Sendable, Hashable {
 
 public struct EffectQuery: EntityQuery {
     public init() {}
-    private static let builtIns = (0..<32).map { EffectEntity(id: String($0), name: "Effect \($0)") }
-    public func entities(for identifiers: [EffectEntity.ID]) async throws -> [EffectEntity] {
-        Self.builtIns.filter { identifiers.contains($0.id) }
+    private func builtIns() -> [EffectEntity] {
+        (0..<32).map { EffectEntity(id: String($0), name: "Effect \($0)") }
     }
-    public func suggestedEntities() async throws -> [EffectEntity] { Self.builtIns }
+    public func entities(for identifiers: [EffectEntity.ID]) async throws -> [EffectEntity] {
+        builtIns().filter { identifiers.contains($0.id) }
+    }
+    public func suggestedEntities() async throws -> [EffectEntity] { builtIns() }
 }
 
 private enum IntentError: Error, CustomLocalizedStringResourceConvertible {
