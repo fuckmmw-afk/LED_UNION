@@ -14,8 +14,8 @@ let package = Package(
             name: "LEDNativeBLEPlugin",
             dependencies: [
                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
-                .product(name: "LEDUnionCore", package: "LEDUnion"),
-                .product(name: "LEDUnionIntents", package: "LEDUnion"),
+                .product(name: "LEDUnionCore", package: "LED_UNION"),
+                .product(name: "LEDUnionIntents", package: "LED_UNION"),
             ],
             path: "."
         )
