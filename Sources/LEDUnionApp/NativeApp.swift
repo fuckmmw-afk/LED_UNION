@@ -21,7 +21,10 @@ public final class NativeAppModel: ObservableObject {
     @Published public var brightness = 100
     @Published public var power = true
     @Published public private(set) var scanning = false
+    @Published public private(set) var connectingIDs: Set<UUID> = []
     @Published public var error: String?
+
+    public func isConnecting(_ id: UUID) -> Bool { connectingIDs.contains(id) }
 
     private var eventTask: Task<Void, Never>?
 
@@ -77,11 +80,14 @@ public final class NativeAppModel: ObservableObject {
     public func connect(_ advertisement: BLEAdvertisement) async {
         error = nil
         selectedDeviceID = advertisement.id
+        connectingIDs.insert(advertisement.id)
+        defer { connectingIDs.remove(advertisement.id) }
         do {
             try await manager.connect(id: advertisement.id, advertisedName: advertisement.name)
             await refresh()
             LEDAppShortcuts.updateAppShortcutParameters()
         } catch {
+            await refresh()
             self.error = error.localizedDescription
         }
     }
@@ -89,11 +95,14 @@ public final class NativeAppModel: ObservableObject {
     public func connect(_ device: LEDDevice) async {
         error = nil
         selectedDeviceID = device.id
+        connectingIDs.insert(device.id)
+        defer { connectingIDs.remove(device.id) }
         do {
             try await manager.connect(id: device.id, advertisedName: device.advertisedName)
             await refresh()
             LEDAppShortcuts.updateAppShortcutParameters()
         } catch {
+            await refresh()
             self.error = error.localizedDescription
         }
     }
@@ -129,6 +138,7 @@ public final class NativeAppModel: ObservableObject {
             try await manager.send(command, to: id, coalescingKey: key)
             await refresh()
         } catch {
+            await refresh()
             self.error = error.localizedDescription
         }
     }
@@ -187,9 +197,12 @@ private struct NativeDevicesView: View {
                     }
                 }
 
-                if !model.discovered.isEmpty {
+                let newDevices = model.discovered.filter { advertisement in
+                    !model.devices.contains(where: { $0.id == advertisement.id })
+                }
+                if !newDevices.isEmpty {
                     Section("Найдено") {
-                        ForEach(model.discovered) { advertisement in
+                        ForEach(newDevices) { advertisement in
                             HStack {
                                 VStack(alignment: .leading) {
                                     Text(advertisement.name)
@@ -197,7 +210,11 @@ private struct NativeDevicesView: View {
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Button("Подключить") { Task { await model.connect(advertisement) } }
+                                if model.isConnecting(advertisement.id) {
+                                    ProgressView()
+                                } else {
+                                    Button("Подключить") { Task { await model.connect(advertisement) } }
+                                }
                             }
                         }
                     }
@@ -234,10 +251,13 @@ private struct NativeDeviceRow: View {
             Circle().fill(device.connected ? .green : .gray).frame(width: 10, height: 10)
             VStack(alignment: .leading) {
                 Text(device.label ?? device.advertisedName)
-                Text(device.driverID).font(.caption).foregroundStyle(.secondary)
+                Text(model.isConnecting(device.id) ? "Подключение…" : device.connected ? "Подключено · \(device.driverID)" : "Не подключено · \(device.driverID)")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if device.connected {
+            if model.isConnecting(device.id) {
+                ProgressView()
+            } else if device.connected {
                 Button("Отключить") { Task { await model.disconnect(device) } }
             } else {
                 Button("Подключить") { Task { await model.connect(device) } }

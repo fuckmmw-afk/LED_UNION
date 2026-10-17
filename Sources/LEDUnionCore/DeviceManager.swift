@@ -41,21 +41,33 @@ public final class DeviceManager {
                 }
             }
         }
-        try await transport.connect(id: id, expectedWriteCharacteristicUUID: driver.writeCharacteristicUUID)
-        if let queue = queues[id] {
-            for frame in driver.onConnect(now: .now) { await queue.enqueue(frame) }
-            await queue.waitUntilIdle()
-            let result = await queue.snapshot()
-            if result.failed > 0 { throw CommandQueueError.writeFailed(result.lastError ?? "unknown error") }
-        }
-        try await store.update { state in
-            if let index = state.devices.firstIndex(where: { $0.id == id }) {
-                state.devices[index].connected = true
-            } else {
-                state.devices.append(LEDDevice(id: id, advertisedName: advertisedName, driverID: driver.id, capabilities: driver.capabilities, connected: true))
+
+        do {
+            try await transport.connect(id: id, expectedWriteCharacteristicUUID: driver.writeCharacteristicUUID)
+            if let queue = queues[id] {
+                for frame in driver.onConnect(now: .now) { await queue.enqueue(frame) }
+                await queue.waitUntilIdle()
+                let result = await queue.snapshot()
+                if result.failed > 0 { throw CommandQueueError.writeFailed(result.lastError ?? "unknown error") }
             }
+            try await store.update { state in
+                if let index = state.devices.firstIndex(where: { $0.id == id }) {
+                    state.devices[index].connected = true
+                } else {
+                    state.devices.append(LEDDevice(id: id, advertisedName: advertisedName, driverID: driver.id, capabilities: driver.capabilities, connected: true))
+                }
+            }
+            await diagnostics.record(.init(deviceID: id, kind: "connection", detail: "connected"))
+        } catch {
+            transport.disconnect(id: id)
+            try? await store.update { state in
+                if let index = state.devices.firstIndex(where: { $0.id == id }) {
+                    state.devices[index].connected = false
+                }
+            }
+            await diagnostics.record(.init(deviceID: id, kind: "connection", detail: "failed: \(error.localizedDescription)"))
+            throw error
         }
-        await diagnostics.record(.init(deviceID: id, kind: "connection", detail: "connected"))
     }
 
     public func disconnect(id: UUID) async {
@@ -85,7 +97,10 @@ public final class DeviceManager {
         await queue.enqueue(frame, coalescingKey: coalescingKey)
         await queue.waitUntilIdle()
         let result = await queue.snapshot()
-        if result.failed > before { throw CommandQueueError.writeFailed(result.lastError ?? "unknown error") }
+        if result.failed > before {
+            await markDisconnected(id: id, detail: result.lastError ?? "unknown error")
+            throw CommandQueueError.writeFailed(result.lastError ?? "unknown error")
+        }
         try await store.update { state in
             guard let index = state.devices.firstIndex(where: { $0.id == id }) else { return }
             switch command {
@@ -97,6 +112,16 @@ public final class DeviceManager {
             }
         }
         await diagnostics.record(.init(deviceID: id, kind: "command", detail: String(describing: command)))
+    }
+
+    private func markDisconnected(id: UUID, detail: String) async {
+        transport.disconnect(id: id)
+        try? await store.update { state in
+            if let index = state.devices.firstIndex(where: { $0.id == id }) {
+                state.devices[index].connected = false
+            }
+        }
+        await diagnostics.record(.init(deviceID: id, kind: "connection", detail: "write failed: \(detail)"))
     }
 
     /// Compatibility path for the existing Svelte protocol builders and the
@@ -112,7 +137,10 @@ public final class DeviceManager {
         await queue.enqueue(frame, coalescingKey: coalescingKey)
         await queue.waitUntilIdle()
         let result = await queue.snapshot()
-        if result.failed > before { throw CommandQueueError.writeFailed(result.lastError ?? "unknown error") }
+        if result.failed > before {
+            await markDisconnected(id: id, detail: result.lastError ?? "unknown error")
+            throw CommandQueueError.writeFailed(result.lastError ?? "unknown error")
+        }
         await diagnostics.record(.init(deviceID: id, kind: "raw-command", detail: frame.map { String(format: "%02x", $0) }.joined(separator: " ")))
     }
 

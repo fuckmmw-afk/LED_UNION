@@ -238,6 +238,8 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
 
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard error == nil else {
+            state = .failed
+            emit(.state(.failed))
             finishConnection(peripheral.identifier, error: error!)
             emit(.diagnostic(.init(deviceID: peripheral.identifier, kind: "gatt", detail: error!.localizedDescription)))
             return
@@ -246,7 +248,13 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
     }
 
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        guard error == nil else { return }
+        guard error == nil else {
+            state = .failed
+            emit(.state(.failed))
+            finishConnection(peripheral.identifier, error: error!)
+            emit(.diagnostic(.init(deviceID: peripheral.identifier, kind: "gatt", detail: error!.localizedDescription)))
+            return
+        }
         let discovered = (service.characteristics ?? []).map { characteristic in
             "\(characteristic.uuid.uuidString) [\(characteristic.properties)]"
         }
