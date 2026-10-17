@@ -3,6 +3,7 @@ import Foundation
 import LEDUnionCore
 
 @objc(LEDNativeBLEPlugin)
+@MainActor
 public final class LEDNativeBLEPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "LEDNativeBLEPlugin"
     public let jsName = "LEDNativeBLE"
