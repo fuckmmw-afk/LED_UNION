@@ -48,6 +48,7 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
     private var connectionWaiters: [UUID: [CheckedContinuation<Void, Error>]] = [:]
     private var streamContinuation: AsyncStream<BLEEvent>.Continuation?
     private var services: [CBUUID]
+    private var scanRequested = false
 
     public init(restorationIdentifier: String = "fun.fuckmmw.ledunion.ble") {
         self.restorationIdentifier = restorationIdentifier
@@ -66,16 +67,33 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
     }
 
     public func startScan() {
-        guard central.state == .poweredOn else { emit(.state(.failed)); return }
-        state = .scanning
-        emit(.state(.scanning))
-        central.scanForPeripherals(withServices: services, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+        scanRequested = true
+        // CBCentralManager starts in .unknown. Keep the request pending until
+        // CoreBluetooth reports .poweredOn instead of failing immediately on a
+        // cold app launch or just after the permission prompt.
+        guard central.state == .poweredOn else {
+            state = .scanning
+            emit(.state(.scanning))
+            return
+        }
+        beginScan()
     }
 
     public func stopScan() {
+        scanRequested = false
         central.stopScan()
         state = .idle
         emit(.state(.idle))
+    }
+
+    private func beginScan() {
+        guard scanRequested, central.state == .poweredOn else { return }
+        state = .scanning
+        emit(.state(.scanning))
+        // A large number of controllers do not include their GATT service UUID
+        // in advertisement packets. Filter by the advertised LED name in the
+        // plugin, then discover the actual service after connecting.
+        central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
     }
 
     public func connect(id: UUID) async throws {
@@ -114,8 +132,17 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
     }
 
     public func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        let next: LEDTransportState = central.state == .poweredOn ? .idle : .failed
-        state = next; emit(.state(next))
+        switch central.state {
+        case .poweredOn:
+            if scanRequested { beginScan() }
+            else { state = .idle; emit(.state(.idle)) }
+        case .unknown:
+            // Keep a pending scan alive while CoreBluetooth finishes startup.
+            if scanRequested { state = .scanning; emit(.state(.scanning)) }
+        default:
+            state = .failed
+            emit(.state(.failed))
+        }
     }
 
     public func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
@@ -126,7 +153,10 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
     public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                                advertisementData: [String: Any], rssi RSSI: NSNumber) {
         peripherals[peripheral.identifier] = peripheral
-        let name = peripheral.name ?? (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? "Unknown LED"
+        let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+        let name = [peripheral.name, localName]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? "Unknown LED"
         let serviceUUIDs = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []).map(\.uuidString)
         let advertisement = BLEAdvertisement(id: peripheral.identifier, name: name, rssi: RSSI.intValue, serviceUUIDs: serviceUUIDs)
         advertisements[peripheral.identifier] = advertisement

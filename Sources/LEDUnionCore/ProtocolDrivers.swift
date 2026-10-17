@@ -25,6 +25,15 @@ public enum DriverRegistry {
     public static let ffe0 = FFE0Driver(name: "LEDBLE-00")
     public static let bledim = BLEDIMDriver(name: "BLEDIM")
 
+    /// Returns true only for names with a known LED Union protocol profile.
+    /// Unknown BLE peripherals are kept out of the device chooser so connecting
+    /// cannot silently select a driver that does not match the hardware.
+    public static func supports(advertisedName name: String) -> Bool {
+        bledim.matches(advertisedName: name)
+            || melk.matches(advertisedName: name)
+            || ffe0.matches(advertisedName: name)
+    }
+
     public static func driver(for name: String) -> any LEDProtocolDriver {
         if bledim.matches(advertisedName: name) { return BLEDIMDriver(name: name) }
         if melk.matches(advertisedName: name) { return MELKDriver(name: name) }

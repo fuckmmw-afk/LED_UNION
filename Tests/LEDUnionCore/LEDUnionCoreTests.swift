@@ -12,6 +12,15 @@ func melkRGBFrame() {
     #expect(Array(driver.rgb(RGBColor(red: 255, green: 255, blue: 255))) == [0x7e, 0x07, 0x05, 0x03, 0xff, 0xff, 0xff, 0x10, 0xef])
 }
 
+@Test("Driver registry recognises LED advertisements and ignores unrelated BLE names")
+func driverRegistryAdvertisementMatching() {
+    #expect(DriverRegistry.supports(advertisedName: "MELK-OF21 9D"))
+    #expect(DriverRegistry.supports(advertisedName: "LEDBLE-00"))
+    #expect(DriverRegistry.supports(advertisedName: "BLEDIM"))
+    #expect(!DriverRegistry.supports(advertisedName: "Heart Rate Monitor"))
+    #expect(!DriverRegistry.supports(advertisedName: "Unknown LED"))
+}
+
 @Test("RGB inputs are clamped to wire byte boundaries")
 func rgbClamping() {
     let driver = MELKDriver(name: "MELK-OF21 9D")

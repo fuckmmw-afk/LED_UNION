@@ -140,7 +140,9 @@ export async function addDevice(): Promise<Conn | undefined> {
     await restoreNativeEvents()
     const result = await LEDNativeBLE.scan({ timeoutMs: 5000 })
     const device = result.devices[0]
-    if (!device) return undefined
+    if (!device) {
+      throw new Error('No supported LED devices found. Turn on the controller and try again.')
+    }
     trackNative(device)
     await connect(device.id)
     return conns[device.id]

@@ -40,7 +40,9 @@ public final class LEDNativeBLEPlugin: CAPPlugin, CAPBridgedPlugin {
         Task { @MainActor [weak self, weak manager] in
             try? await Task.sleep(nanoseconds: timeout)
             manager?.transport.stopScan()
-            let devices: [[String: Any]] = manager?.transport.advertisements.values.map { self?.encode($0) ?? [String: Any]() } ?? []
+            let devices: [[String: Any]] = manager?.transport.advertisements.values
+                .filter { DriverRegistry.supports(advertisedName: $0.name) }
+                .map { self?.encode($0) ?? [String: Any]() } ?? []
             call.resolve(["devices": devices])
         }
     }
