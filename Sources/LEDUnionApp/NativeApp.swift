@@ -3,6 +3,7 @@ import Combine
 import Foundation
 import SwiftUI
 import LEDUnionCore
+import LEDUnionIntents
 
 @MainActor
 public final class NativeAppModel: ObservableObject {
@@ -79,6 +80,7 @@ public final class NativeAppModel: ObservableObject {
         do {
             try await manager.connect(id: advertisement.id, advertisedName: advertisement.name)
             await refresh()
+            LEDAppShortcuts.updateAppShortcutParameters()
         } catch {
             self.error = error.localizedDescription
         }
@@ -90,6 +92,7 @@ public final class NativeAppModel: ObservableObject {
         do {
             try await manager.connect(id: device.id, advertisedName: device.advertisedName)
             await refresh()
+            LEDAppShortcuts.updateAppShortcutParameters()
         } catch {
             self.error = error.localizedDescription
         }

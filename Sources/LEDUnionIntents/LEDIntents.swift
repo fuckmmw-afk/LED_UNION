@@ -5,13 +5,25 @@ import LEDUnionCore
 
 @MainActor
 public enum LEDAppRuntime {
-    public static var store: LEDStore {
+    public static func makeStore() -> LEDStore {
         LEDStore(fileURL: URL.applicationSupportDirectory.appendingPathComponent("LEDUnion/led-union.json"))
     }
-    public static var manager: DeviceManager { DeviceManager(store: store) }
+
+    /// App Intents runs in a separate system invocation and must load the same
+    /// atomic JSON state that the native SwiftUI app writes.
+    public static func loadedStore() async -> LEDStore {
+        let store = makeStore()
+        try? await store.load()
+        return store
+    }
+
+    public static func loadedManager() async -> DeviceManager {
+        let store = await loadedStore()
+        return DeviceManager(store: store)
+    }
 
     public static func load() async {
-        try? await store.load()
+        _ = await loadedStore()
     }
 }
 
@@ -27,15 +39,25 @@ public struct DeviceEntity: AppEntity, Sendable, Hashable {
 public struct DeviceQuery: EntityQuery {
     public init() {}
     public func entities(for identifiers: [DeviceEntity.ID]) async throws -> [DeviceEntity] {
-        let state = await LEDAppRuntime.store.snapshot()
+        let store = await LEDAppRuntime.loadedStore()
+        let state = await store.snapshot()
         return state.devices.compactMap { device in
             guard identifiers.contains(device.id.uuidString) else { return nil }
             return DeviceEntity(id: device.id.uuidString, name: device.label ?? device.advertisedName)
         }
     }
     public func suggestedEntities() async throws -> [DeviceEntity] {
-        let state = await LEDAppRuntime.store.snapshot()
+        let store = await LEDAppRuntime.loadedStore()
+        let state = await store.snapshot()
         return state.devices.map { DeviceEntity(id: $0.id.uuidString, name: $0.label ?? $0.advertisedName) }
+    }
+}
+
+extension DeviceQuery: EntityStringQuery {
+    public func entities(matching string: String) async throws -> [DeviceEntity] {
+        let query = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return try await suggestedEntities() }
+        return try await suggestedEntities().filter { $0.name.localizedCaseInsensitiveContains(query) }
     }
 }
 
@@ -51,11 +73,13 @@ public struct SceneEntity: AppEntity, Sendable, Hashable {
 public struct SceneQuery: EntityQuery {
     public init() {}
     public func entities(for identifiers: [SceneEntity.ID]) async throws -> [SceneEntity] {
-        let state = await LEDAppRuntime.store.snapshot()
+        let store = await LEDAppRuntime.loadedStore()
+        let state = await store.snapshot()
         return state.scenes.compactMap { identifiers.contains($0.id.uuidString) ? SceneEntity(id: $0.id.uuidString, name: $0.name) : nil }
     }
     public func suggestedEntities() async throws -> [SceneEntity] {
-        let state = await LEDAppRuntime.store.snapshot()
+        let store = await LEDAppRuntime.loadedStore()
+        let state = await store.snapshot()
         return state.scenes.map { SceneEntity(id: $0.id.uuidString, name: $0.name) }
     }
 }
@@ -100,7 +124,8 @@ public struct SetLEDColorIntent: AppIntent {
     public init(device: DeviceEntity, hex: String) { self.device = device; self.hex = hex }
     public func perform() async throws -> some IntentResult {
         guard let color = RGBColor(hex: hex) else { throw $hex.needsValueError("Enter a color like #FF0088") }
-        try await LEDAppRuntime.manager.send(.color(color), to: deviceID(device), coalescingKey: "color")
+        let manager = await LEDAppRuntime.loadedManager()
+        try await manager.send(.color(color), to: deviceID(device), coalescingKey: "color")
         return .result()
     }
 }
@@ -112,7 +137,8 @@ public struct SetLEDBrightnessIntent: AppIntent {
     @Parameter(title: "Brightness") public var brightness: Int
     public init() {}
     public func perform() async throws -> some IntentResult {
-        try await LEDAppRuntime.manager.send(.brightness(max(0, min(100, brightness))), to: deviceID(device), coalescingKey: "brightness")
+        let manager = await LEDAppRuntime.loadedManager()
+        try await manager.send(.brightness(max(0, min(100, brightness))), to: deviceID(device), coalescingKey: "brightness")
         return .result()
     }
 }
@@ -123,12 +149,14 @@ public struct ApplyLEDSceneIntent: AppIntent {
     @Parameter(title: "Scene") public var scene: SceneEntity
     public init() {}
     public func perform() async throws -> some IntentResult {
-        let state = await LEDAppRuntime.store.snapshot()
+        let store = await LEDAppRuntime.loadedStore()
+        let state = await store.snapshot()
         guard let saved = state.scenes.first(where: { $0.id.uuidString == scene.id }) else { throw IntentError.deviceMissing }
+        let manager = await LEDAppRuntime.loadedManager()
         for entry in saved.entries {
-            if let color = entry.look.color { try? await LEDAppRuntime.manager.send(.color(color), to: entry.deviceID, coalescingKey: "scene-color") }
-            if let brightness = entry.look.brightness { try? await LEDAppRuntime.manager.send(.brightness(brightness), to: entry.deviceID, coalescingKey: "scene-brightness") }
-            if let power = entry.look.power { try? await LEDAppRuntime.manager.send(.power(power), to: entry.deviceID) }
+            if let color = entry.look.color { try? await manager.send(.color(color), to: entry.deviceID, coalescingKey: "scene-color") }
+            if let brightness = entry.look.brightness { try? await manager.send(.brightness(brightness), to: entry.deviceID, coalescingKey: "scene-brightness") }
+            if let power = entry.look.power { try? await manager.send(.power(power), to: entry.deviceID) }
         }
         return .result()
     }
@@ -143,7 +171,8 @@ public struct StartLEDEffectIntent: AppIntent {
     public func perform() async throws -> some IntentResult {
         let id = try deviceID(device)
         let numericID = Int(effect.id) ?? 0
-        try await LEDAppRuntime.manager.send(.effect(LEDEffect(id: numericID, name: effect.name)), to: id)
+        let manager = await LEDAppRuntime.loadedManager()
+        try await manager.send(.effect(LEDEffect(id: numericID, name: effect.name)), to: id)
         return .result()
     }
 }
@@ -155,11 +184,13 @@ public struct StopLEDEffectIntent: AppIntent {
     public init() {}
     public func perform() async throws -> some IntentResult {
         let id = try deviceID(device)
-        let state = await LEDAppRuntime.store.snapshot()
+        let store = await LEDAppRuntime.loadedStore()
+        let state = await store.snapshot()
+        let manager = await LEDAppRuntime.loadedManager()
         if let color = state.devices.first(where: { $0.id == id })?.lastLook.color {
-            try await LEDAppRuntime.manager.send(.color(color), to: id, coalescingKey: "effect-stop")
+            try await manager.send(.color(color), to: id, coalescingKey: "effect-stop")
         } else {
-            try await LEDAppRuntime.manager.send(.power(true), to: id)
+            try await manager.send(.power(true), to: id)
         }
         return .result()
     }
@@ -170,7 +201,11 @@ public struct TurnLEDOnIntent: AppIntent {
     public static let openAppWhenRun = true
     @Parameter(title: "Device") public var device: DeviceEntity
     public init() {}
-    public func perform() async throws -> some IntentResult { try await LEDAppRuntime.manager.send(.power(true), to: deviceID(device)); return .result() }
+    public func perform() async throws -> some IntentResult {
+        let manager = await LEDAppRuntime.loadedManager()
+        try await manager.send(.power(true), to: deviceID(device))
+        return .result()
+    }
 }
 
 public struct TurnLEDOffIntent: AppIntent {
@@ -178,7 +213,11 @@ public struct TurnLEDOffIntent: AppIntent {
     public static let openAppWhenRun = true
     @Parameter(title: "Device") public var device: DeviceEntity
     public init() {}
-    public func perform() async throws -> some IntentResult { try await LEDAppRuntime.manager.send(.power(false), to: deviceID(device)); return .result() }
+    public func perform() async throws -> some IntentResult {
+        let manager = await LEDAppRuntime.loadedManager()
+        try await manager.send(.power(false), to: deviceID(device))
+        return .result()
+    }
 }
 
 public struct ConnectLEDDeviceIntent: AppIntent {
@@ -187,9 +226,11 @@ public struct ConnectLEDDeviceIntent: AppIntent {
     @Parameter(title: "Device") public var device: DeviceEntity
     public init() {}
     public func perform() async throws -> some IntentResult {
-        let state = await LEDAppRuntime.store.snapshot()
+        let store = await LEDAppRuntime.loadedStore()
+        let state = await store.snapshot()
         guard let saved = state.devices.first(where: { $0.id.uuidString == device.id }) else { throw IntentError.deviceMissing }
-        try await LEDAppRuntime.manager.connect(id: saved.id, advertisedName: saved.advertisedName)
+        let manager = await LEDAppRuntime.loadedManager()
+        try await manager.connect(id: saved.id, advertisedName: saved.advertisedName)
         return .result()
     }
 }
