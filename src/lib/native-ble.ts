@@ -4,8 +4,15 @@ export type NativeBLEDevice = {
   id: string
   name: string
   rssi?: number
+  serviceUUIDs?: string[]
   driverId?: string
   connected?: boolean
+}
+
+export type NativeBLEScanResult = {
+  devices: NativeBLEDevice[]
+  seen?: Array<{ name: string; serviceUUIDs?: string[] }>
+  state?: string
 }
 
 export type NativeBLEEvent = {
@@ -18,7 +25,7 @@ export type NativeBLEEvent = {
 }
 
 export interface LEDNativeBLEPlugin {
-  scan(options?: { timeoutMs?: number }): Promise<{ devices: NativeBLEDevice[] }>
+  scan(options?: { timeoutMs?: number }): Promise<NativeBLEScanResult>
   stopScan(): Promise<void>
   connect(options: { deviceId: string; name: string }): Promise<void>
   disconnect(options: { deviceId: string }): Promise<void>

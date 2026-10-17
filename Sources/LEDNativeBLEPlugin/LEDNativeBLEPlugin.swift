@@ -39,11 +39,19 @@ public final class LEDNativeBLEPlugin: CAPPlugin, CAPBridgedPlugin {
         let timeout = UInt64(max(250, min(15_000, call.getInt("timeoutMs") ?? 5_000))) * 1_000_000
         Task { @MainActor [weak self, weak manager] in
             try? await Task.sleep(nanoseconds: timeout)
+            let scanState = manager?.transport.state.rawValue ?? "unknown"
+            let advertisements = manager.map { Array($0.transport.advertisements.values) } ?? []
             manager?.transport.stopScan()
-            let devices: [[String: Any]] = manager?.transport.advertisements.values
+            let devices: [[String: Any]] = advertisements
                 .filter { DriverRegistry.supports(advertisedName: $0.name) }
-                .map { self?.encode($0) ?? [String: Any]() } ?? []
-            call.resolve(["devices": devices])
+                .map { self?.encode($0) ?? [String: Any]() }
+            // Keep a compact view of what CoreBluetooth actually saw. It is only
+            // used when no supported profile matched, so a renamed/generic
+            // controller can be identified instead of failing silently.
+            let seen: [[String: Any]] = advertisements.map {
+                ["name": $0.name, "serviceUUIDs": $0.serviceUUIDs]
+            }
+            call.resolve(["devices": devices, "seen": seen, "state": scanState])
         }
     }
 

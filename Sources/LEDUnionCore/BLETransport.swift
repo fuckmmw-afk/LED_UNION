@@ -154,7 +154,10 @@ public final class BLETransport: NSObject, @preconcurrency CBCentralManagerDeleg
                                advertisementData: [String: Any], rssi RSSI: NSNumber) {
         peripherals[peripheral.identifier] = peripheral
         let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
-        let name = [peripheral.name, localName]
+        // Prefer the current advertisement name over CoreBluetooth's cached
+        // peripheral.name. The cache can be generic or stale after a firmware
+        // rename, while the local-name field is what the controller is airing now.
+        let name = [localName, peripheral.name]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty } ?? "Unknown LED"
         let serviceUUIDs = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []).map(\.uuidString)

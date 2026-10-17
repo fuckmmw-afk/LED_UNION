@@ -5,6 +5,7 @@ export { epKey, parseEp }
 import { allServices, driverFor, drivers, type Driver } from './protocol/index.ts'
 import { forgetDevice, rememberDevice, store } from './store.svelte.ts'
 import { LEDNativeBLE, isNativeBLE, type NativeBLEDevice } from './native-ble.ts'
+import { t } from './i18n.svelte.ts'
 
 /** What to show a human. Never pass this to a driver. */
 export const displayName = (c: { name: string; label?: string }) => c.label || c.name
@@ -141,7 +142,13 @@ export async function addDevice(): Promise<Conn | undefined> {
     const result = await LEDNativeBLE.scan({ timeoutMs: 5000 })
     const device = result.devices[0]
     if (!device) {
-      throw new Error('No supported LED devices found. Turn on the controller and try again.')
+      if (result.state === 'failed') throw new Error(t('devices.bluetoothUnavailable'))
+      const names = (result.seen ?? [])
+        .map((entry) => entry.name.trim())
+        .filter((name) => name && name !== 'Unknown LED')
+        .slice(0, 4)
+      const detail = names.length ? ` ${t('devices.seen', { names: names.join(', ') })}` : ''
+      throw new Error(`${t('devices.noSupported')}${detail}`)
     }
     trackNative(device)
     await connect(device.id)

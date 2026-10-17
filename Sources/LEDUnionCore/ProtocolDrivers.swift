@@ -64,7 +64,12 @@ public struct MELKDriver: LEDProtocolDriver {
     }
 
     public func matches(advertisedName: String) -> Bool {
-        advertisedName.range(of: "^(MELK-|ELK[-~_]|XSL-|CLK-)", options: [.regularExpression, .caseInsensitive]) != nil
+        // Some firmware omits the model suffix or uses the documented
+        // "LED LIGHT STRIP" local name even though it exposes FFF0/FFF3.
+        advertisedName.range(
+            of: "^(MELK|ELK|XSL|CLK)([-~_ ]|$)|^LED[ _-]+LIGHT[ _-]+STRIP$",
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
     }
 
     public func onConnect(now: Date = .now) -> [Data] { [] }

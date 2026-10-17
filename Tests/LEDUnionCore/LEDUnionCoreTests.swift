@@ -15,6 +15,9 @@ func melkRGBFrame() {
 @Test("Driver registry recognises LED advertisements and ignores unrelated BLE names")
 func driverRegistryAdvertisementMatching() {
     #expect(DriverRegistry.supports(advertisedName: "MELK-OF21 9D"))
+    #expect(DriverRegistry.supports(advertisedName: "MELK"))
+    #expect(DriverRegistry.supports(advertisedName: "ELK-BTC"))
+    #expect(DriverRegistry.supports(advertisedName: "LED LIGHT STRIP"))
     #expect(DriverRegistry.supports(advertisedName: "LEDBLE-00"))
     #expect(DriverRegistry.supports(advertisedName: "BLEDIM"))
     #expect(!DriverRegistry.supports(advertisedName: "Heart Rate Monitor"))
