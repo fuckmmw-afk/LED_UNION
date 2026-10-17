@@ -32,7 +32,7 @@ func bledimStaticScene() {
     let second = driver.rgb(RGBColor(red: 0, green: 255, blue: 0))
     #expect(first.count == 79)
     #expect(first[3] == 0x82)
-    #expect(first[17] == 255 && first[18] == 0 && first[19] == 128)
+    #expect(first[23] == 255 && first[24] == 0 && first[25] == 128)
     #expect(second[2] == 10)
 }
 
