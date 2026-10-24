@@ -176,29 +176,38 @@ public actor EffectTaskController {
         let frames = EffectsEngine.frames(colors: effect.colors, fade: effect.fade)
         let interval = UInt64(max(10, 1000 - effect.speed * 9)) * 1_000_000
         tasks[deviceID] = Task {
-            for frame in frames {
-                guard !Task.isCancelled else { return }
-                await send(frame.color)
-                try? await Task.sleep(nanoseconds: interval)
+            guard !frames.isEmpty else { return }
+            while !Task.isCancelled {
+                for frame in frames {
+                    guard !Task.isCancelled else { return }
+                    await send(frame.color)
+                    try? await Task.sleep(nanoseconds: interval)
+                }
             }
         }
         return id
     }
 
-    public func start(deviceID: UUID, effect: SoftwareEffect, send: @escaping @Sendable (RGBColor) async -> Void) -> UUID {
+    public func start(deviceID: UUID, effect: SoftwareEffect, interval: Duration = .milliseconds(80), send: @escaping @Sendable (RGBColor) async -> Void) -> UUID {
         tasks[deviceID]?.cancel()
         let id = UUID()
         let frames = EffectsEngine.frames(effect: effect)
+        let interval = max(30, min(500, interval.components.seconds * 1000 + Int64(interval.components.attoseconds / 1_000_000_000_000_000)))
         tasks[deviceID] = Task {
-            for frame in frames {
-                guard !Task.isCancelled else { return }
-                await send(frame.color)
-                try? await Task.sleep(for: .milliseconds(33))
+            // Software effects loop until cancelled; the queue coalesces frames the
+            // controller cannot keep up with, so a slow link drops frames, not time.
+            while !Task.isCancelled {
+                for frame in frames {
+                    guard !Task.isCancelled else { return }
+                    await send(frame.color)
+                    try? await Task.sleep(for: .milliseconds(interval))
+                }
             }
         }
         return id
     }
 
+    public func isRunning(deviceID: UUID) -> Bool { tasks[deviceID] != nil }
     public func cancel(deviceID: UUID) { tasks.removeValue(forKey: deviceID)?.cancel() }
     public func cancelAll() { tasks.values.forEach { $0.cancel() }; tasks.removeAll() }
 }

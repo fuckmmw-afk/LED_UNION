@@ -57,10 +57,13 @@ public struct LEDLook: Codable, Hashable, Sendable {
     public var speed: Int?
     public var effect: LEDEffect?
     public var customEffectID: String?
+    public var white: Int?
+    public var warmth: Int?
     public init(power: Bool? = nil, color: RGBColor? = nil, brightness: Int? = nil,
-                speed: Int? = nil, effect: LEDEffect? = nil, customEffectID: String? = nil) {
+                speed: Int? = nil, effect: LEDEffect? = nil, customEffectID: String? = nil,
+                white: Int? = nil, warmth: Int? = nil) {
         self.power = power; self.color = color; self.brightness = brightness; self.speed = speed
-        self.effect = effect; self.customEffectID = customEffectID
+        self.effect = effect; self.customEffectID = customEffectID; self.white = white; self.warmth = warmth
     }
 }
 
@@ -72,12 +75,24 @@ public struct LEDDevice: Codable, Hashable, Sendable, Identifiable {
     public var capabilities: LEDCapabilities
     public var lastLook: LEDLook
     public var connected: Bool
+    /// Nil in stores written before this field existed; treated as true.
+    public var autoConnect: Bool?
+    public var lastConnectedAt: Date?
 
     public init(id: UUID, advertisedName: String, label: String? = nil, driverID: String,
-                capabilities: LEDCapabilities = .init(), lastLook: LEDLook = .init(), connected: Bool = false) {
+                capabilities: LEDCapabilities = .init(), lastLook: LEDLook = .init(), connected: Bool = false,
+                autoConnect: Bool? = true, lastConnectedAt: Date? = nil) {
         self.id = id; self.advertisedName = advertisedName; self.label = label; self.driverID = driverID
         self.capabilities = capabilities; self.lastLook = lastLook; self.connected = connected
+        self.autoConnect = autoConnect; self.lastConnectedAt = lastConnectedAt
     }
+
+    public var displayName: String {
+        let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? advertisedName : trimmed
+    }
+
+    public var wantsAutoConnect: Bool { autoConnect ?? true }
 }
 
 public struct LEDGroup: Codable, Hashable, Sendable, Identifiable {
@@ -153,6 +168,28 @@ public struct LEDStoreState: Codable, Sendable {
 }
 
 public enum LEDTransportState: String, Codable, Sendable { case idle, scanning, connecting, connected, disconnected, failed }
+
+/// Where one controller is in its connection lifecycle, for the UI and Shortcuts.
+public enum LEDConnectionPhase: Sendable, Equatable {
+    case idle
+    case waitingForBluetooth
+    case connecting(attempt: Int)
+    case discovering
+    case linked
+    case handshaking
+    case ready
+    case reconnecting(attempt: Int)
+    case failed(String)
+
+    public var isBusy: Bool {
+        switch self {
+        case .waitingForBluetooth, .connecting, .discovering, .linked, .handshaking, .reconnecting: return true
+        case .idle, .ready, .failed: return false
+        }
+    }
+
+    public var isReady: Bool { self == .ready }
+}
 
 public struct BLEAdvertisement: Codable, Hashable, Sendable, Identifiable {
     public let id: UUID

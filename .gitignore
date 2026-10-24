@@ -26,3 +26,4 @@ artifacts
 
 # APKs de origem — não redistribuir (ver docs/protocol/ para os fatos extraídos)
 original_apps/
+.build/

@@ -24,9 +24,11 @@ public final class LEDNativeBLEPlugin: CAPPlugin, CAPBridgedPlugin {
     private var streamTask: Task<Void, Never>?
 
     override public func load() {
-        let store = (try? LEDStore.applicationSupport()) ?? LEDStore(fileURL: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("led-union.json"))
-        manager = DeviceManager(store: store)
-        Task { try? await store.load() }
+        // Share the process-wide runtime: a second DeviceManager would create a
+        // second CBCentralManager with the same restoration identifier.
+        let runtime = LEDRuntime.shared
+        manager = runtime.manager
+        Task { await runtime.start() }
         streamTask = Task { [weak self] in
             guard let self, let manager = self.manager else { return }
             for await event in manager.transport.events() { self.emit(event) }
@@ -120,10 +122,11 @@ public final class LEDNativeBLEPlugin: CAPPlugin, CAPBridgedPlugin {
         switch event {
         case .discovered(let value): notifyListeners("bleEvent", data: ["type": "discovered", "deviceId": value.id.uuidString, "name": value.name, "rssi": value.rssi])
         case .connected(let id): notifyListeners("bleEvent", data: ["type": "connected", "deviceId": id.uuidString])
-        case .disconnected(let id, let error): notifyListeners("bleEvent", data: ["type": "disconnected", "deviceId": id.uuidString, "message": error as Any])
+        case .disconnected(let id, let error, _): notifyListeners("bleEvent", data: ["type": "disconnected", "deviceId": id.uuidString, "message": error as Any])
         case .state(let state): notifyListeners("bleEvent", data: ["type": "state", "message": state.rawValue])
         case .diagnostic(let event): notifyListeners("bleEvent", data: ["type": "diagnostic", "deviceId": event.deviceID?.uuidString as Any, "message": event.detail])
-        case .notification: break
+        case .linkPhase(let id, let phase): notifyListeners("bleEvent", data: ["type": "phase", "deviceId": id.uuidString, "message": String(describing: phase)])
+        case .notification, .power, .scanning: break
         }
     }
 }

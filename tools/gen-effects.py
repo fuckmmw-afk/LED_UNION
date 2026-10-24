@@ -4,6 +4,7 @@ import json, os
 
 DOCS = "docs/protocol"
 OUT = "src/lib/protocol/effects.ts"
+SWIFT_OUT = "Sources/LEDUnionCore/EffectTables.swift"
 
 
 def tsv(fname, cols):
@@ -51,7 +52,29 @@ def main():
         for name, _ in tables:
             fh.write(f"  {name},\n")
         fh.write("}\n")
-    print(OUT, {n: len(r) for n, r in tables})
+    write_swift(tables)
+    print(OUT, SWIFT_OUT, {n: len(r) for n, r in tables})
+
+
+def swift_string(value):
+    # The TSVs carry a few escaped apostrophes from the decompiled resources.
+    value = value.replace("\\'", "'")
+    return json.dumps(value, ensure_ascii=False)
+
+
+def write_swift(tables):
+    with open(SWIFT_OUT, "w") as fh:
+        fh.write("// GENERATED from docs/protocol/*.tsv by tools/gen-effects.py"
+                 " — do not edit by hand.\n")
+        fh.write("// swiftlint:disable all\n\n")
+        fh.write("public enum EffectTables {\n")
+        for name, rows in tables:
+            fh.write(f"    public static let {name}: [LEDEffect] = [\n")
+            for r in rows:
+                group = f", group: {swift_string(r['group'])}" if r.get("group") else ""
+                fh.write(f"        LEDEffect(id: {r['id']}, name: {swift_string(r['name'])}{group}),\n")
+            fh.write("    ]\n")
+        fh.write("}\n")
 
 
 if __name__ == "__main__":

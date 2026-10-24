@@ -124,3 +124,70 @@ func commandQueueCancellation() async {
     let values = await recorder.snapshot()
     #expect(values == [Data([0])])
 }
+
+private func replay(_ command: String, on driver: any LEDProtocolDriver) -> Data? {
+    let parts = command.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+    let numbers = parts.count > 1 ? parts[1].split(separator: ",").compactMap { Int($0) } : []
+    switch parts[0] {
+    case "power": return driver.power(numbers.first == 1)
+    case "rgb": return driver.rgb(RGBColor(red: numbers[0], green: numbers[1], blue: numbers[2]))
+    case "brightness": return driver.brightness(numbers[0])
+    case "speed": return driver.speed(numbers[0])
+    case "effect":
+        let group = parts.count > 2 && !parts[2].isEmpty ? parts[2] : nil
+        return driver.effect(LEDEffect(id: numbers[0], name: "", group: group))
+    case "white": return driver.white(numbers[0])
+    case "cct": return driver.cct(warm: numbers[0], cool: numbers[1])
+    default: return nil
+    }
+}
+
+@Test("Native drivers emit the same bytes as the TypeScript drivers")
+func nativeFramesMatchTypeScript() {
+    var drivers: [String: any LEDProtocolDriver] = [:]
+    for fixture in tsFrameFixtures {
+        // BLEDIM keeps colour/brightness state between calls, so every name replays
+        // its whole sequence on one driver instance, exactly like the TS emitter.
+        let driver = drivers[fixture.name] ?? DriverRegistry.driver(for: fixture.name)
+        drivers[fixture.name] = driver
+        var actual = replay(fixture.command, on: driver).map(Array.init)
+        var expected = fixture.frame
+        if driver is BLEDIMDriver {
+            // The packet counter and the checksum covering it are free-running.
+            if actual != nil { actual![2] = 0; actual!.removeLast() }
+            if expected != nil { expected![2] = 0; expected!.removeLast() }
+        }
+        #expect(actual == expected, "\(fixture.name) \(fixture.command)")
+    }
+}
+
+@Test("Native effect tables match the TypeScript tables")
+func nativeEffectTablesMatchTypeScript() {
+    for (name, ids) in tsEffectIDs {
+        #expect(DriverRegistry.driver(for: name).effects.map(\.id) == ids, "\(name)")
+    }
+}
+
+@Test("Stores written by the previous release still decode")
+func legacyStoreDecodes() throws {
+    let legacy = """
+    {"schemaVersion":1,"devices":[{"id":"6F1D6A43-2D7B-4C55-9D1C-6E1B1E3B7A10","advertisedName":"MELK-OF21 9D",
+    "driverID":"fff0-melk","capabilities":{"rgb":true,"white":false,"cct":false,"speed":true,"effects":true,"scenes":true},
+    "lastLook":{"color":{"red":1,"green":2,"blue":3}},"connected":true}],
+    "groups":[],"scenes":[],"customEffects":[],"automations":[],"palette":[],"history":[],"diagnosticsEnabled":false}
+    """
+    let state = try JSONDecoder().decode(LEDStoreState.self, from: Data(legacy.utf8))
+    let device = try #require(state.devices.first)
+    #expect(device.wantsAutoConnect)
+    #expect(device.displayName == "MELK-OF21 9D")
+    #expect(device.lastLook.white == nil)
+}
+
+@Test("Magic Lantern scenes use the scene opcode and effects carry their table")
+func melkScenesAndTables() {
+    let driver = MELKDriver(name: "MELK-OF21 9D")
+    #expect(driver.effects.count == 241)
+    let scene = driver.effects.first { $0.group == "Scenes" }!
+    #expect(driver.effect(scene)[2] == 0x31)
+    #expect(FFE0Driver(name: "LEDBLE-00").effects.first?.id == 135)
+}
