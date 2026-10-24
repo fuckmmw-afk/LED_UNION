@@ -249,7 +249,9 @@ public final class DeviceManager {
                 guard let device = await self.savedDevice(id) else { break }
                 attempt += 1
                 do {
-                    try await self.ensureConnected(id: id, advertisedName: device.advertisedName, attempts: 1, reconnectAttempt: attempt)
+                    // A launch-time auto-connect reads as "connecting", not as a recovery.
+                    let shownAttempt: Int? = immediate && attempt == 1 ? nil : attempt
+                    try await self.ensureConnected(id: id, advertisedName: device.advertisedName, attempts: 1, reconnectAttempt: shownAttempt)
                     break
                 } catch is CancellationError {
                     break

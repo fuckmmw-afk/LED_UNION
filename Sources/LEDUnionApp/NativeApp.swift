@@ -54,6 +54,7 @@ public final class NativeAppModel: ObservableObject {
 
     private var eventTask: Task<Void, Never>?
     private var scanStopTask: Task<Void, Never>?
+    private var colorCommitTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
     private var seenNames: [UUID: String] = [:]
     private var livePending: [String: LEDCommand] = [:]
@@ -361,8 +362,21 @@ public final class NativeAppModel: ObservableObject {
 
     public func liveColor(_ value: RGBColor) {
         color = value
+        power = true
         if softwareEffect != nil || micActive { Task { await stopSoftwareModes() } }
         live(.color(value), key: "color")
+    }
+
+    /// The system colour picker has no "drag ended" callback, so persist the colour
+    /// once it has been still for a moment.
+    public func pickerColor(_ value: RGBColor) {
+        liveColor(value)
+        colorCommitTask?.cancel()
+        colorCommitTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(900))
+            guard !Task.isCancelled, let self else { return }
+            await self.commit(.color(self.color))
+        }
     }
 
     public func finishColorDrag() async { await commit(.color(color)) }
@@ -1078,6 +1092,7 @@ private struct LevelSlider: View {
     var unit = "%"
     let onChange: () -> Void
     let onEnd: () -> Void
+    @State private var editing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1086,10 +1101,12 @@ private struct LevelSlider: View {
                 Spacer()
                 Text("\(Int(value.rounded()))\(unit)").monospacedDigit().foregroundStyle(.secondary)
             }
-            Slider(value: $value, in: range, step: 1, onEditingChanged: { editing in
-                if !editing { onEnd() }
+            Slider(value: $value, in: range, step: 1, onEditingChanged: { isEditing in
+                editing = isEditing
+                if !isEditing { onEnd() }
             })
-            .onChange(of: value) { _, _ in onChange() }
+            // Only user drags send live frames; restoring a saved value must not.
+            .onChange(of: value) { _, _ in if editing { onChange() } }
         }
     }
 }
@@ -1130,7 +1147,7 @@ private struct LightScreen: View {
                                     Text(model.color.hex).font(.headline.monospaced())
                                     ColorPicker("Палитра", selection: Binding(
                                         get: { model.color.swiftUIColor },
-                                        set: { model.liveColor(RGBColor($0)) }
+                                        set: { model.pickerColor(RGBColor($0)) }
                                     ), supportsOpacity: false)
                                 }
                             }
