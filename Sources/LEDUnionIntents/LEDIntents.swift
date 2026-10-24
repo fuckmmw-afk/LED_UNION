@@ -311,10 +311,10 @@ public struct SetLEDHexColorIntent: AppIntent {
 public struct SetLEDBrightnessIntent: AppIntent {
     public static let title: LocalizedStringResource = "Установить яркость"
     public static let description = IntentDescription("Яркость от 0 до 100 %.")
-    @Parameter(title: "Яркость", default: 100, controlStyle: .slider, inclusiveRange: (0, 100)) public var brightness: Int
+    @Parameter(title: "Яркость", default: 100, inclusiveRange: (0, 100)) public var brightness: Int
     @Parameter(title: "Устройство", description: "Пусто — все устройства") public var device: DeviceEntity?
     public init() {}
-    public static var parameterSummary: some ParameterSummary { Summary("Яркость \(\.$brightness) % на \(\.$device)") }
+    public static var parameterSummary: some ParameterSummary { Summary("Яркость \(\.$brightness) на \(\.$device)") }
     public func perform() async throws -> some IntentResult & ProvidesDialog {
         let text = try await IntentRuntime.run(.brightness(max(0, min(100, brightness))), on: device)
         return .result(dialog: "\(text)")
@@ -324,10 +324,10 @@ public struct SetLEDBrightnessIntent: AppIntent {
 public struct SetLEDSpeedIntent: AppIntent {
     public static let title: LocalizedStringResource = "Скорость эффекта"
     public static let description = IntentDescription("Скорость встроенного эффекта от 0 до 100 %.")
-    @Parameter(title: "Скорость", default: 50, controlStyle: .slider, inclusiveRange: (0, 100)) public var speed: Int
+    @Parameter(title: "Скорость", default: 50, inclusiveRange: (0, 100)) public var speed: Int
     @Parameter(title: "Устройство", description: "Пусто — все устройства") public var device: DeviceEntity?
     public init() {}
-    public static var parameterSummary: some ParameterSummary { Summary("Скорость \(\.$speed) % на \(\.$device)") }
+    public static var parameterSummary: some ParameterSummary { Summary("Скорость \(\.$speed) на \(\.$device)") }
     public func perform() async throws -> some IntentResult & ProvidesDialog {
         let text = try await IntentRuntime.run(.speed(max(0, min(100, speed))), on: device)
         return .result(dialog: "\(text)")
