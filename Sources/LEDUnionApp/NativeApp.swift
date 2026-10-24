@@ -4,7 +4,6 @@ import Foundation
 import SwiftUI
 import UIKit
 import LEDUnionCore
-import LEDUnionIntents
 
 // MARK: - Model
 
@@ -64,6 +63,10 @@ public final class NativeAppModel: ObservableObject {
     private let audio = AudioReactiveEngine()
     private var micHue: Double = 0
     private var lastShortcutRefresh = Date.distantPast
+
+    /// Set by the app target, which owns the AppShortcutsProvider, so new devices
+    /// and scenes show up as Siri/Spotlight shortcut parameters.
+    public static var refreshShortcuts: (@MainActor () -> Void)?
 
     public init(runtime: LEDRuntime = .shared) {
         self.runtime = runtime
@@ -177,7 +180,7 @@ public final class NativeAppModel: ObservableObject {
     private func refreshShortcutsIfNeeded() {
         guard Date().timeIntervalSince(lastShortcutRefresh) > 2 else { return }
         lastShortcutRefresh = Date()
-        LEDAppShortcuts.updateAppShortcutParameters()
+        Self.refreshShortcuts?()
     }
 
     private func handle(_ event: DeviceManagerEvent) async {
@@ -471,7 +474,7 @@ public final class NativeAppModel: ObservableObject {
         do {
             try await manager.scenes.save(name: trimmed, deviceIDs: targetIDs.isEmpty ? devices.map(\.id) : targetIDs)
             await reload()
-            LEDAppShortcuts.updateAppShortcutParameters()
+            Self.refreshShortcuts?()
             show("Сцена «\(trimmed)» сохранена", .success)
         } catch {
             show(error.localizedDescription, .error)
@@ -493,7 +496,7 @@ public final class NativeAppModel: ObservableObject {
     public func deleteScene(_ scene: LEDScene) async {
         try? await manager.scenes.delete(scene.id)
         await reload()
-        LEDAppShortcuts.updateAppShortcutParameters()
+        Self.refreshShortcuts?()
     }
 
     // MARK: Diagnostics

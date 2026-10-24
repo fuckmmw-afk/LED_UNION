@@ -419,36 +419,7 @@ public struct ConnectLEDDeviceIntent: AppIntent {
     }
 }
 
-// MARK: - App Shortcuts
-
-public struct LEDAppShortcuts: AppShortcutsProvider {
-    public static var appShortcuts: [AppShortcut] {
-        AppShortcut(intent: TurnLEDOnIntent(),
-                    phrases: ["Включи свет в \(.applicationName)", "Turn on lights in \(.applicationName)"],
-                    shortTitle: "Включить", systemImageName: "lightbulb.fill")
-        AppShortcut(intent: TurnLEDOffIntent(),
-                    phrases: ["Выключи свет в \(.applicationName)", "Turn off lights in \(.applicationName)"],
-                    shortTitle: "Выключить", systemImageName: "lightbulb.slash")
-        AppShortcut(intent: ToggleLEDIntent(),
-                    phrases: ["Переключи свет в \(.applicationName)", "Toggle lights in \(.applicationName)"],
-                    shortTitle: "Переключить", systemImageName: "power")
-        AppShortcut(intent: SetLEDColorIntent(),
-                    phrases: ["Сделай \(\.$color) свет в \(.applicationName)",
-                              "Поменяй цвет в \(.applicationName)",
-                              "Set \(\.$color) light in \(.applicationName)"],
-                    shortTitle: "Цвет", systemImageName: "paintpalette.fill")
-        AppShortcut(intent: SetLEDBrightnessIntent(),
-                    phrases: ["Измени яркость в \(.applicationName)", "Set brightness in \(.applicationName)"],
-                    shortTitle: "Яркость", systemImageName: "sun.max.fill")
-        AppShortcut(intent: StartLEDEffectIntent(),
-                    phrases: ["Запусти эффект в \(.applicationName)",
-                              "Start an effect in \(.applicationName)"],
-                    shortTitle: "Эффект", systemImageName: "sparkles")
-        AppShortcut(intent: ApplyLEDSceneIntent(),
-                    phrases: ["Включи сцену \(\.$scene) в \(.applicationName)",
-                              "Примени сцену в \(.applicationName)",
-                              "Apply a scene in \(.applicationName)"],
-                    shortTitle: "Сцена", systemImageName: "theatermasks.fill")
-    }
-}
+// The AppShortcutsProvider lives in the app target (ios/App/App/AppShortcuts.swift):
+// Xcode 16 only extracts App Shortcut phrases declared in the main app module, so a
+// provider in this package silently produced zero Siri/Spotlight shortcuts.
 #endif

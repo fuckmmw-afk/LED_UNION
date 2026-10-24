@@ -48,6 +48,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
+        NativeAppModel.refreshShortcuts = { LEDUnionShortcuts.updateAppShortcutParameters() }
         let window = UIWindow(windowScene: windowScene)
         window.rootViewController = UIHostingController(rootView: NativeRootView(model: model))
         self.window = window
@@ -60,8 +61,10 @@ PY
 
 /usr/libexec/PlistBuddy -c 'Add :NSBluetoothAlwaysUsageDescription string LED Union uses Bluetooth to control your lights.' ios/App/App/Info.plist 2>/dev/null || true
 /usr/libexec/PlistBuddy -c 'Add :NSMicrophoneUsageDescription string LED Union uses the microphone for the audio-reactive lighting mode.' ios/App/App/Info.plist 2>/dev/null || true
-/usr/libexec/PlistBuddy -c 'Add :UIBackgroundModes array' ios/App/App/Info.plist 2>/dev/null || true
-/usr/libexec/PlistBuddy -c 'Add :UIBackgroundModes:0 string bluetooth-central' ios/App/App/Info.plist 2>/dev/null || true
+if ! /usr/libexec/PlistBuddy -c 'Print :UIBackgroundModes' ios/App/App/Info.plist 2>/dev/null | grep -q bluetooth-central; then
+  /usr/libexec/PlistBuddy -c 'Add :UIBackgroundModes array' ios/App/App/Info.plist 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Add :UIBackgroundModes:0 string bluetooth-central' ios/App/App/Info.plist
+fi
 
 python3 - <<'PY'
 from pathlib import Path
