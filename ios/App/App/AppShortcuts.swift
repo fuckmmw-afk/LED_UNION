@@ -1,5 +1,4 @@
 import AppIntents
-import LEDUnionIntents
 
 /// App Shortcuts must be declared in the app module itself: the metadata processor
 /// ignores providers compiled into Swift packages. The intents stay in the package.

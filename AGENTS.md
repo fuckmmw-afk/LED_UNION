@@ -11,7 +11,8 @@ differential fixtures in `tools/difftest/`.
 
 - `Sources/LEDUnionCore` owns CoreBluetooth, protocol selection, frame builders,
   pacing, coalescing, cancellation, persistence and diagnostics.
-- `Sources/LEDUnionIntents` owns App Intents and Shortcuts. Intents call the core;
+- `ios/App/App/LEDIntents.swift` and `AppShortcuts.swift` own App Intents and Shortcuts
+  (they must be in the app module for the Shortcuts action picker). Intents call the core;
   they never call JavaScript or the WebView.
 - `Sources/LEDUnionApp` owns the native SwiftUI iOS screens and presentation state.
   It calls the core directly; the iOS launch path does not load a WebView.

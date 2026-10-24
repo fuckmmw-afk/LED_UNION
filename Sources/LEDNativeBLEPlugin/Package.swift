@@ -15,7 +15,7 @@ let package = Package(
             dependencies: [
                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
                 .product(name: "LEDUnionCore", package: "LED_UNION"),
-                .product(name: "LEDUnionIntents", package: "LED_UNION"),
+                .product(name: "LEDUnionCore", package: "LED_UNION"),
             ],
             path: "."
         )

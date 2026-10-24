@@ -97,7 +97,7 @@ tools/gen-effects.py   effect table generator
 tools/difftest/        checks our builders against the original apps
 ```
 
-Native Swift code lives in `Sources/LEDUnionCore` and `Sources/LEDUnionIntents`.
+Native Swift code lives in `Sources/LEDUnionCore`, `Sources/LEDUnionApp` and, for App Intents, `ios/App/App/`.
 The generated Capacitor Xcode shell is kept in `ios/`; CI regenerates it when
 needed and links the local Swift packages with `tools/configure-ios-spm.sh`.
 

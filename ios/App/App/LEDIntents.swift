@@ -3,6 +3,10 @@ import AppIntents
 import Foundation
 import LEDUnionCore
 
+// Intents live in the app target, not in a Swift package: the Shortcuts action
+// picker did not list the app while the intent types were defined in a package
+// module, even though the App Shortcut tiles built on them worked.
+
 // Every intent runs in the app process and goes through `LEDRuntime.shared`, the
 // same DeviceManager the SwiftUI scene uses. A Shortcut therefore reuses a live
 // BLE link when the app already holds one, and otherwise connects in the
@@ -419,7 +423,4 @@ public struct ConnectLEDDeviceIntent: AppIntent {
     }
 }
 
-// The AppShortcutsProvider lives in the app target (ios/App/App/AppShortcuts.swift):
-// Xcode 16 only extracts App Shortcut phrases declared in the main app module, so a
-// provider in this package silently produced zero Siri/Spotlight shortcuts.
 #endif

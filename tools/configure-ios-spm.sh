@@ -29,7 +29,7 @@ let package = Package(
             name: "CapApp-SPM",
             dependencies: [
                 .product(name: "LEDUnionApp", package: "LED_UNION"),
-                .product(name: "LEDUnionIntents", package: "LED_UNION")
+                .product(name: "LEDUnionCore", package: "LED_UNION")
             ]
         )
     ]
